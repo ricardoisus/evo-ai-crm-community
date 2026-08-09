@@ -29,6 +29,18 @@ RSpec.describe Instagram::ReelPreview do
       )
     end
 
+    it 'decodes HTML entities in Open Graph image URLs' do
+      response = Net::HTTPOK.new('1.1', '200', 'OK')
+      response['content-type'] = 'text/html; charset=utf-8'
+      response.instance_variable_set(
+        :@body,
+        '<meta property="og:image" content="https://cdninstagram.example/reel.jpg?a=1&amp;amp;b=2">'
+      )
+      allow(preview).to receive(:request).and_return(response)
+
+      expect(preview.call[:preview_image_url]).to eq('https://cdninstagram.example/reel.jpg?a=1&b=2')
+    end
+
     it 'does not fetch or normalize non-Instagram URLs' do
       service = described_class.new('https://example.com/reel/ABC123')
       allow(service).to receive(:request)

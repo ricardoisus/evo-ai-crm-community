@@ -2,6 +2,7 @@
 
 require 'net/http'
 require 'uri'
+require 'cgi'
 
 class Instagram::ReelPreview
   MAX_BODY_BYTES = 1.megabyte
@@ -96,7 +97,7 @@ class Instagram::ReelPreview
   def safe_http_url(value)
     return if value.blank?
 
-    uri = URI.parse(value)
+    uri = URI.parse(CGI.unescapeHTML(value))
     uri.to_s if uri.is_a?(URI::HTTP) && uri.host.present?
   rescue URI::InvalidURIError
     nil

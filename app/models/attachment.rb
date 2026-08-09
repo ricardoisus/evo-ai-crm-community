@@ -142,7 +142,7 @@ class Attachment < ApplicationRecord
     {
       extension: extension,
       data_url: external_url,
-      thumb_url: meta&.[]('preview_image_url'),
+      thumb_url: thumb_url.presence || meta&.[]('preview_image_url'),
       file_size: file.attached? ? file.byte_size : 0,
       width: file.attached? ? file.metadata[:width] : nil,
       height: file.attached? ? file.metadata[:height] : nil,

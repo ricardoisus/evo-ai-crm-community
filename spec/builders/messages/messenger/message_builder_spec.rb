@@ -22,7 +22,8 @@ RSpec.describe Messages::Messenger::MessageBuilder do
       expect(params).to eq(
         external_url: 'https://www.instagram.com/reel/ABC123/',
         fallback_title: 'Vetorial Reel',
-        meta: metadata
+        meta: metadata,
+        preview_file_url: 'https://cdninstagram.example/reel.jpg'
       )
       expect(params).not_to have_key(:remote_file_url)
     end
