@@ -39,6 +39,17 @@ class Messages::Messenger::MessageBuilder
   end
 
   def file_type_params(attachment)
+    if attachment['type'].to_s == 'ig_reel'
+      metadata = Instagram::ReelPreview.new(attachment.dig('payload', 'url')).call
+      canonical_url = metadata[:canonical_url] || attachment.dig('payload', 'url')
+
+      return {
+        external_url: canonical_url,
+        fallback_title: metadata[:title].presence || 'Instagram Reel',
+        meta: metadata
+      }
+    end
+
     {
       external_url: attachment['payload']['url'],
       remote_file_url: attachment['payload']['url']
