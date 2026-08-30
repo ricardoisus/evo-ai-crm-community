@@ -66,7 +66,10 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
       t.references :actor, type: :uuid, foreign_key: { to_table: :users }, index: true
       t.string :action, null: false
       t.string :source, null: false, default: 'system'
-      t.jsonb :changes, null: false, default: {}
+      # `changes` is an Active Record instance method and cannot safely be used
+      # as a model attribute. Keep the public API key as `changes`, but persist
+      # the append-only payload under an unambiguous column name.
+      t.jsonb :change_set, null: false, default: {}
       t.jsonb :metadata, null: false, default: {}
       t.datetime :created_at, null: false, default: -> { 'CURRENT_TIMESTAMP' }
       t.index [:pipeline_item_id, :created_at], name: 'index_deal_history_on_deal_and_created_at'

@@ -165,7 +165,13 @@ class PipelineItem < ApplicationRecord
   end
 
   def record_history!(action, actor: Current.user, source: 'user', changes: {}, metadata: {})
-    deal_history_events.create!(actor: actor, action: action, source: source, changes: changes, metadata: metadata)
+    deal_history_events.create!(
+      actor: actor,
+      action: action,
+      source: source,
+      change_set: changes,
+      metadata: metadata
+    )
   end
 
   def update_deal_labels!(labels, actor: Current.user, source: 'user')

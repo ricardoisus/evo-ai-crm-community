@@ -609,7 +609,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
     t.uuid "actor_id"
     t.string "action", null: false
     t.string "source", default: "system", null: false
-    t.jsonb "changes", default: {}, null: false
+    t.jsonb "change_set", default: {}, null: false
     t.jsonb "metadata", default: {}, null: false
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["actor_id"], name: "index_deal_history_events_on_actor_id"

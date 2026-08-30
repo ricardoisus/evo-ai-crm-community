@@ -39,7 +39,7 @@ class Api::V1::DealsController < Api::V1::BaseController
         stage = @deal.pipeline.pipeline_stages.find(attributes.delete(:pipeline_stage_id))
         @deal.move_to_stage(stage, Current.user)
       end
-      @deal.update!(attributes) if attributes.any?
+      @deal.update!(attributes) unless attributes.empty?
       @deal.update_deal_labels!(deal_params[:labels]) if deal_params.key?(:labels)
     end
     success_response(data: DealSerializer.serialize(reload_deal), message: 'Deal updated successfully')

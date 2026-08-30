@@ -59,8 +59,8 @@ RSpec.describe 'Deals API', type: :request do
     expect(response).to have_http_status(:ok)
     event = deal.reload.deal_history_events.order(:created_at).last
     expect(event.action).to eq('deal_updated')
-    expect(event.changes.dig('title', 'previous')).to eq('Before')
-    expect(event.changes.dig('title', 'current')).to eq('After')
+    expect(event.change_set.dig('title', 'previous')).to eq('Before')
+    expect(event.change_set.dig('title', 'current')).to eq('After')
     expect { event.update!(source: 'tampered') }.to raise_error(ActiveRecord::ReadOnlyRecord)
     expect { event.destroy! }.to raise_error(ActiveRecord::ReadOnlyRecord)
   end

@@ -123,7 +123,7 @@ module DealSerializer
         id: event.id,
         action: event.action,
         source: event.source,
-        changes: event.changes,
+        changes: event.change_set,
         metadata: event.metadata,
         actor: user_data(event.actor),
         created_at: event.created_at.iso8601
