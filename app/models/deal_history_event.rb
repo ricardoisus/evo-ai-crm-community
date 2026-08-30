@@ -1,5 +1,5 @@
 class DealHistoryEvent < ApplicationRecord
-  belongs_to :pipeline_item
+  belongs_to :pipeline_item, optional: true
   belongs_to :actor, class_name: 'User', optional: true
 
   validates :action, :source, presence: true

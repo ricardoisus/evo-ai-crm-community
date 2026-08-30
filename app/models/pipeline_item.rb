@@ -31,7 +31,10 @@
 #  fk_rails_...  (pipeline_stage_id => pipeline_stages.id)
 #
 class PipelineItem < ApplicationRecord
+  LABEL_UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
+
   include Wisper::Publisher
+  include Labelable
 
   belongs_to :pipeline
   belongs_to :pipeline_stage
@@ -55,9 +58,9 @@ class PipelineItem < ApplicationRecord
   has_many :contacts, through: :deal_contacts
   has_many :deal_conversations, dependent: :destroy
   has_many :conversations, through: :deal_conversations
-  has_many :deal_history_events, dependent: :delete_all
+  has_many :deal_history_events
   has_many :attachments, as: :attachable, dependent: :destroy
-  has_many :scheduled_actions, foreign_key: :deal_id, dependent: :nullify
+  has_many :scheduled_actions, foreign_key: :deal_uuid, dependent: :nullify
   has_many :tasks, class_name: 'PipelineTask', dependent: :destroy
   has_many :pipeline_item_products, dependent: :destroy
   has_many :products, through: :pipeline_item_products
@@ -93,6 +96,7 @@ class PipelineItem < ApplicationRecord
   after_update :publish_pipeline_item_updated
   after_update :record_update_history
   after_update :publish_pipeline_item_completed, if: :saved_change_to_completed_at?
+  before_destroy :record_deletion_history
   after_destroy :publish_pipeline_item_deleted
 
   scope :in_stage, ->(stage) { where(pipeline_stage: stage) }
@@ -162,6 +166,18 @@ class PipelineItem < ApplicationRecord
 
   def record_history!(action, actor: Current.user, source: 'user', changes: {}, metadata: {})
     deal_history_events.create!(actor: actor, action: action, source: source, changes: changes, metadata: metadata)
+  end
+
+  def update_deal_labels!(labels, actor: Current.user, source: 'user')
+    previous = label_list.to_a
+    update_labels(resolve_deal_label_titles(labels))
+    current = label_list.to_a
+    return if previous == current
+
+    record_history!(
+      'deal_labels_updated', actor: actor, source: source,
+                             changes: { labels: { previous: previous, current: current } }
+    )
   end
 
   def days_in_pipeline
@@ -341,6 +357,13 @@ class PipelineItem < ApplicationRecord
 
   private
 
+  def resolve_deal_label_titles(labels)
+    tokens = Array(labels).map { |label| label.to_s.strip }.reject(&:blank?)
+    ids, titles = tokens.partition { |label| LABEL_UUID_PATTERN.match?(label) }
+    labels_by_id = Label.where(id: ids).pluck(:id, :title).to_h
+    (titles + ids.map { |id| labels_by_id[id] || id }).uniq
+  end
+
   def set_default_deal_values
     self.currency = 'BRL' if currency.blank?
     self.value = custom_fields&.dig('value').presence || services_total_value if value.blank?
@@ -379,6 +402,13 @@ class PipelineItem < ApplicationRecord
 
     changes = audited.transform_values { |values| { previous: values[0], current: values[1] } }
     record_history!('deal_updated', actor: Current.user, source: Current.user ? 'user' : 'system', changes: changes)
+  end
+
+  def record_deletion_history
+    record_history!(
+      'deal_deleted', actor: Current.user, source: Current.user ? 'user' : 'system',
+                      changes: { previous: attributes.slice('title', 'value', 'currency', 'pipeline_stage_id') }
+    )
   end
 
   def validate_custom_fields_structure

@@ -11,8 +11,9 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
   end
 
   def down
-    remove_column :scheduled_actions, :deal_id if column_exists?(:scheduled_actions, :deal_id)
-    rename_column :scheduled_actions, :legacy_deal_id, :deal_id if column_exists?(:scheduled_actions, :legacy_deal_id)
+    remove_foreign_key :scheduled_actions, column: :deal_uuid if foreign_key_exists?(:scheduled_actions, column: :deal_uuid)
+    remove_column :scheduled_actions, :deal_uuid if column_exists?(:scheduled_actions, :deal_uuid)
+    remove_column :scheduled_actions, :legacy_deal_id if column_exists?(:scheduled_actions, :legacy_deal_id)
     drop_table :deal_history_events, if_exists: true
     drop_table :deal_conversations, if_exists: true
     drop_table :deal_contacts, if_exists: true
@@ -59,7 +60,9 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
 
   def create_deal_history
     create_table :deal_history_events, id: :uuid, if_not_exists: true do |t|
-      t.references :pipeline_item, type: :uuid, null: false, foreign_key: true, index: true
+      # Audit records intentionally keep the deal UUID without a foreign key.
+      # This allows the immutable timeline to survive a hard-deleted deal.
+      t.references :pipeline_item, type: :uuid, null: false, index: true
       t.references :actor, type: :uuid, foreign_key: { to_table: :users }, index: true
       t.string :action, null: false
       t.string :source, null: false, default: 'system'
@@ -73,10 +76,17 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
   def migrate_scheduled_action_deal_id
     return unless table_exists?(:scheduled_actions)
 
-    if column_exists?(:scheduled_actions, :deal_id, :bigint) && !column_exists?(:scheduled_actions, :legacy_deal_id)
-      rename_column :scheduled_actions, :deal_id, :legacy_deal_id
+    # Expand phase: keep the original bigint deal_id untouched so the previous
+    # application image can continue reading/writing during rollout or rollback.
+    # A later contract migration may rename deal_uuid after the rollback window.
+    add_column :scheduled_actions, :legacy_deal_id, :bigint unless column_exists?(:scheduled_actions, :legacy_deal_id)
+    add_index :scheduled_actions, :legacy_deal_id, if_not_exists: true
+    add_column :scheduled_actions, :deal_uuid, :uuid unless column_exists?(:scheduled_actions, :deal_uuid)
+    add_index :scheduled_actions, :deal_uuid, if_not_exists: true
+    unless foreign_key_exists?(:scheduled_actions, :pipeline_items, column: :deal_uuid)
+      add_foreign_key :scheduled_actions, :pipeline_items, column: :deal_uuid
     end
-    add_reference :scheduled_actions, :deal, type: :uuid, foreign_key: { to_table: :pipeline_items }, index: true unless column_exists?(:scheduled_actions, :deal_id)
+    execute 'UPDATE scheduled_actions SET legacy_deal_id = deal_id WHERE legacy_deal_id IS NULL AND deal_id IS NOT NULL'
   end
 
   def backfill_deals

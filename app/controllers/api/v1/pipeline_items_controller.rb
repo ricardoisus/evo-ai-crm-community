@@ -21,6 +21,7 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
       :pipeline_stage,
       :deal_contacts,
       :deal_conversations,
+      :labels,
       owner: { avatar_attachment: :blob },
       company: [:labels, { avatar_attachment: :blob }],
       primary_contact: [:labels, { avatar_attachment: :blob }],

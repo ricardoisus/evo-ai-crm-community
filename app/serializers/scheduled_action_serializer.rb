@@ -8,7 +8,8 @@ module ScheduledActionSerializer
 
     {
       id: scheduled_action.id,
-      deal_id: scheduled_action.deal_id || scheduled_action.legacy_deal_id,
+      deal_id: scheduled_action.canonical_deal_id,
+      deal_uuid: scheduled_action.deal_uuid,
       legacy_deal_id: scheduled_action.legacy_deal_id,
       contact_id: scheduled_action.contact_id,
       conversation_id: scheduled_action.conversation_id,

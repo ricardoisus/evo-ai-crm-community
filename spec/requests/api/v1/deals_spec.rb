@@ -65,6 +65,31 @@ RSpec.describe 'Deals API', type: :request do
     expect { event.destroy! }.to raise_error(ActiveRecord::ReadOnlyRecord)
   end
 
+  it 'stores labels on the deal instead of borrowing contact labels' do
+    label = Label.create!(title: "priority-#{SecureRandom.hex(3)}", color: '#7c3aed')
+    deal = PipelineItem.create!(pipeline: pipeline, pipeline_stage: stage, title: 'Tagged deal')
+
+    patch "/api/v1/deals/#{deal.id}", params: { deal: { labels: [label.id] } }, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig('data', 'labels')).to contain_exactly(
+      include('id' => label.id, 'name' => label.title, 'color' => '#7c3aed')
+    )
+    expect(deal.reload.label_list).to contain_exactly(label.title)
+    expect(deal.deal_history_events.pluck(:action)).to include('deal_labels_updated')
+  end
+
+  it 'retains its immutable audit records after deleting the deal' do
+    deal = PipelineItem.create!(pipeline: pipeline, pipeline_stage: stage, title: 'Disposable deal')
+    deal_id = deal.id
+
+    delete "/api/v1/deals/#{deal_id}", as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(PipelineItem.where(id: deal_id)).not_to exist
+    expect(DealHistoryEvent.where(pipeline_item_id: deal_id).pluck(:action)).to include('deal_created', 'deal_deleted')
+  end
+
   it 'uploads and removes a safe deal file while auditing both actions' do
     deal = PipelineItem.create!(pipeline: pipeline, pipeline_stage: stage, title: 'Documents')
     upload = Rack::Test::UploadedFile.new(StringIO.new('proposal'), 'text/plain', original_filename: 'proposal.txt')
@@ -81,5 +106,25 @@ RSpec.describe 'Deals API', type: :request do
     expect(response).to have_http_status(:ok)
     expect(deal.reload.attachments).to be_empty
     expect(deal.deal_history_events.pluck(:action)).to include('file_removed')
+  end
+
+  it 'rolls back the whole file batch when a later attachment fails' do
+    deal = PipelineItem.create!(pipeline: pipeline, pipeline_stage: stage, title: 'Atomic files')
+    files = %w[first second].map do |name|
+      Rack::Test::UploadedFile.new(StringIO.new(name), 'text/plain', original_filename: "#{name}.txt")
+    end
+    saves = 0
+    allow_any_instance_of(Attachment).to receive(:save!).and_wrap_original do |original, *args|
+      saves += 1
+      raise ActiveRecord::RecordInvalid if saves == 2
+
+      original.call(*args)
+    end
+
+    post "/api/v1/deals/#{deal.id}/files", params: { files: files }
+
+    expect(response).to have_http_status(:internal_server_error)
+    expect(deal.reload.attachments).to be_empty
+    expect(deal.deal_history_events.pluck(:action)).not_to include('files_attached')
   end
 end

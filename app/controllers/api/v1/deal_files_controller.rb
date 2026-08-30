@@ -21,10 +21,19 @@ class Api::V1::DealFilesController < Api::V1::BaseController
       return validation_error('One or more files have an unsupported type')
     end
 
-    created = files.map { |file| attach_file(file) }
-    @deal.record_history!(
-      'files_attached', metadata: { attachment_ids: created.map(&:id), names: created.map(&:fallback_title) }
-    )
+    created = []
+    uploaded_blobs = []
+    begin
+      Attachment.transaction do
+        created = files.map { |file| attach_file(file, uploaded_blobs) }
+        @deal.record_history!(
+          'files_attached', metadata: { attachment_ids: created.map(&:id), names: created.map(&:fallback_title) }
+        )
+      end
+    rescue StandardError
+      uploaded_blobs.each { |blob| blob.purge_later if blob.persisted? }
+      raise
+    end
     success_response(
       data: created.map { |file| DealSerializer.attachment_data(file) },
       message: 'Files uploaded successfully', status: :created
@@ -34,8 +43,10 @@ class Api::V1::DealFilesController < Api::V1::BaseController
   def destroy
     attachment = @deal.attachments.find(params[:id])
     metadata = { attachment_id: attachment.id, name: attachment.file.filename.to_s }
-    attachment.destroy!
-    @deal.record_history!('file_removed', metadata: metadata)
+    Attachment.transaction do
+      attachment.destroy!
+      @deal.record_history!('file_removed', metadata: metadata)
+    end
     success_response(data: { id: params[:id] }, message: 'File removed successfully')
   end
 
@@ -57,9 +68,10 @@ class Api::V1::DealFilesController < Api::V1::BaseController
     content_type.to_s.start_with?('image/', 'audio/', 'video/') || Attachment::ACCEPTABLE_FILE_TYPES.include?(content_type)
   end
 
-  def attach_file(file)
+  def attach_file(file, uploaded_blobs)
     attachment = @deal.attachments.build(file_type: file_type_for(file.content_type), fallback_title: file.original_filename)
     attachment.file.attach(io: file, filename: file.original_filename, content_type: file.content_type)
+    uploaded_blobs << attachment.file.blob
     attachment.save!
     attachment
   end

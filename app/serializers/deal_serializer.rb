@@ -40,7 +40,7 @@ module DealSerializer
       contacts: contacts.map { |contact| contact_data(contact, include_labels: true, labels_by_title: labels_by_title) },
       conversations: conversations.map { |conversation| conversation_data(conversation, labels_by_title: labels_by_title) },
       tasks: associated_records(deal, :tasks).map { |task| task.as_json },
-      scheduled_actions: associated_records(deal, :scheduled_actions).map { |action| action.as_json },
+      scheduled_actions: ScheduledActionSerializer.serialize_collection(associated_records(deal, :scheduled_actions)),
       files: associated_records(deal, :attachments).map { |attachment| attachment_data(attachment) },
       history: history_data(deal)
     )

@@ -17,12 +17,13 @@ class Api::V1::DealsController < Api::V1::BaseController
 
   def create
     stage = @pipeline.pipeline_stages.find(deal_params[:pipeline_stage_id].presence || @pipeline.pipeline_stages.order(:position).pick(:id))
-    attributes = deal_params.except(:pipeline_stage_id, :contact_ids, :conversation_ids)
+    attributes = deal_params.except(:pipeline_stage_id, :contact_ids, :conversation_ids, :labels)
     PipelineItem.transaction do
       @deal = @pipeline.pipeline_items.new(attributes.merge(pipeline_stage: stage, assigned_by: Current.user))
       @deal.owner ||= Current.user
       @deal.save!
       attach_initial_associations
+      @deal.update_deal_labels!(deal_params[:labels]) if deal_params.key?(:labels)
     end
     success_response(
       data: DealSerializer.serialize(reload_deal), message: 'Deal created successfully', status: :created
@@ -32,12 +33,15 @@ class Api::V1::DealsController < Api::V1::BaseController
   end
 
   def update
-    attributes = deal_params.except(:contact_ids, :conversation_ids)
-    if attributes[:pipeline_stage_id].present?
-      stage = @deal.pipeline.pipeline_stages.find(attributes.delete(:pipeline_stage_id))
-      @deal.move_to_stage(stage, Current.user)
+    attributes = deal_params.except(:contact_ids, :conversation_ids, :labels)
+    PipelineItem.transaction do
+      if attributes[:pipeline_stage_id].present?
+        stage = @deal.pipeline.pipeline_stages.find(attributes.delete(:pipeline_stage_id))
+        @deal.move_to_stage(stage, Current.user)
+      end
+      @deal.update!(attributes) if attributes.any?
+      @deal.update_deal_labels!(deal_params[:labels]) if deal_params.key?(:labels)
     end
-    @deal.update!(attributes) if attributes.any?
     success_response(data: DealSerializer.serialize(reload_deal), message: 'Deal updated successfully')
   rescue ActiveRecord::RecordInvalid => e
     validation_error(e)
@@ -61,7 +65,7 @@ class Api::V1::DealsController < Api::V1::BaseController
 
   def deal_scope
     PipelineItem.includes(
-      :pipeline, :pipeline_stage, :conversation,
+      :pipeline, :pipeline_stage, :conversation, :labels,
       :deal_contacts, :deal_conversations, :tasks, :scheduled_actions, :stage_movements,
       :deal_history_events, attachments: { file_attachment: :blob },
       owner: { avatar_attachment: :blob },
@@ -90,7 +94,7 @@ class Api::V1::DealsController < Api::V1::BaseController
   def deal_params
     source = params[:deal].presence || params
     source.permit(:title, :value, :currency, :notes, :owner_id, :company_id, :primary_contact_id,
-                  :pipeline_stage_id, contact_ids: [], conversation_ids: [], custom_fields: {})
+                  :pipeline_stage_id, contact_ids: [], conversation_ids: [], labels: [], custom_fields: {})
   end
 
   def attach_initial_associations

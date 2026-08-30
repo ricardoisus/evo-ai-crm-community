@@ -85,6 +85,7 @@ module PipelineItemSerializer
       value: pipeline_item.deal_value.to_f,
       currency: pipeline_item.currency,
       notes: pipeline_item.notes,
+      labels: deal_labels(pipeline_item, labels_by_title),
       owner: pipeline_item.owner && {
         id: pipeline_item.owner.id,
         name: pipeline_item.owner.name,
@@ -204,6 +205,13 @@ module PipelineItemSerializer
     end
 
     result
+  end
+
+  def deal_labels(pipeline_item, labels_by_title)
+    pipeline_item.label_list.to_a.map do |name|
+      label = labels_by_title&.[](name.to_s.downcase)
+      { id: label&.id, name: name, title: name, color: label&.color || '#1f93ff' }
+    end
   end
 
   # Serialize collection of PipelineItems
