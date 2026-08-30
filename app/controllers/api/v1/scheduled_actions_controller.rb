@@ -182,6 +182,7 @@ class Api::V1::ScheduledActionsController < Api::V1::BaseController
   def scheduled_action_params
     params.require(:scheduled_action).permit(
       :deal_id,
+      :legacy_deal_id,
       :contact_id,
       :conversation_id,
       :action_type,
@@ -235,4 +236,3 @@ class Api::V1::ScheduledActionsController < Api::V1::BaseController
     }
   end
 end
-

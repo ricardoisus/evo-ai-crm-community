@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -586,6 +586,37 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
     t.index ["user_id"], name: "index_data_privacy_consents_on_user_id"
   end
 
+  create_table "deal_contacts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "pipeline_item_id", null: false
+    t.uuid "contact_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id"], name: "index_deal_contacts_on_contact_id"
+    t.index ["pipeline_item_id", "contact_id"], name: "index_deal_contacts_on_pipeline_item_id_and_contact_id", unique: true
+  end
+
+  create_table "deal_conversations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "pipeline_item_id", null: false
+    t.uuid "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id"], name: "index_deal_conversations_on_conversation_id"
+    t.index ["pipeline_item_id", "conversation_id"], name: "index_deal_conversations_unique", unique: true
+  end
+
+  create_table "deal_history_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "pipeline_item_id", null: false
+    t.uuid "actor_id"
+    t.string "action", null: false
+    t.string "source", default: "system", null: false
+    t.jsonb "changes", default: {}, null: false
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["actor_id"], name: "index_deal_history_events_on_actor_id"
+    t.index ["pipeline_item_id", "created_at"], name: "index_deal_history_on_deal_and_created_at"
+    t.index ["pipeline_item_id"], name: "index_deal_history_events_on_pipeline_item_id"
+  end
+
   create_table "facebook_comment_moderations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "conversation_id", null: false
     t.uuid "message_id", null: false
@@ -917,12 +948,22 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.uuid "contact_id"
-    t.index ["contact_id", "pipeline_id"], name: "idx_pipeline_items_active_contact_per_pipeline", unique: true, where: "((conversation_id IS NULL) AND (completed_at IS NULL))"
+    t.string "title", null: false
+    t.decimal "value", precision: 14, scale: 2, default: "0.0", null: false
+    t.string "currency", limit: 3, default: "BRL", null: false
+    t.text "notes"
+    t.uuid "owner_id"
+    t.uuid "company_id"
+    t.uuid "primary_contact_id"
+    t.index ["company_id"], name: "index_pipeline_items_on_company_id"
+    t.index ["contact_id", "pipeline_id"], name: "index_pipeline_items_on_contact_and_pipeline"
     t.index ["contact_id"], name: "index_pipeline_items_on_contact_id"
-    t.index ["conversation_id", "pipeline_id"], name: "idx_pipeline_items_active_conversation_per_pipeline", unique: true, where: "((conversation_id IS NOT NULL) AND (completed_at IS NULL))"
+    t.index ["conversation_id", "pipeline_id"], name: "index_pipeline_items_on_conversation_and_pipeline"
     t.index ["custom_fields"], name: "index_pipeline_items_on_custom_fields", using: :gin
     t.index ["pipeline_id"], name: "index_pipeline_items_on_pipeline_id"
     t.index ["pipeline_stage_id"], name: "index_pipeline_items_on_pipeline_stage_id"
+    t.index ["owner_id"], name: "index_pipeline_items_on_owner_id"
+    t.index ["primary_contact_id"], name: "index_pipeline_items_on_primary_contact_id"
   end
 
   create_table "pipeline_service_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1142,7 +1183,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
   end
 
   create_table "scheduled_actions", force: :cascade do |t|
-    t.bigint "deal_id"
+    t.bigint "legacy_deal_id"
+    t.uuid "deal_id"
     t.uuid "contact_id"
     t.uuid "conversation_id"
     t.string "action_type", limit: 50, null: false
@@ -1165,8 +1207,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
     t.index ["contact_id", "status"], name: "idx_scheduled_actions_contact_status"
     t.index ["contact_id"], name: "index_scheduled_actions_on_contact_id"
     t.index ["conversation_id"], name: "index_scheduled_actions_on_conversation_id"
-    t.index ["deal_id", "status"], name: "idx_scheduled_actions_deal_status"
+    t.index ["legacy_deal_id", "status"], name: "idx_scheduled_actions_deal_status"
     t.index ["deal_id"], name: "index_scheduled_actions_on_deal_id"
+    t.index ["legacy_deal_id"], name: "index_scheduled_actions_on_legacy_deal_id"
     t.index ["notify_user_id"], name: "index_scheduled_actions_on_notify_user_id"
     t.index ["scheduled_for"], name: "index_scheduled_actions_on_scheduled_for"
     t.index ["status", "scheduled_for"], name: "idx_scheduled_actions_status_time"
@@ -1377,6 +1420,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
   add_foreign_key "crm_forms", "pipeline_stages", column: "default_stage_id"
   add_foreign_key "crm_forms", "pipelines", column: "default_pipeline_id"
   add_foreign_key "data_privacy_consents", "users"
+  add_foreign_key "deal_contacts", "contacts"
+  add_foreign_key "deal_contacts", "pipeline_items"
+  add_foreign_key "deal_conversations", "conversations"
+  add_foreign_key "deal_conversations", "pipeline_items"
+  add_foreign_key "deal_history_events", "pipeline_items"
+  add_foreign_key "deal_history_events", "users", column: "actor_id"
   add_foreign_key "facebook_comment_moderations", "conversations"
   add_foreign_key "facebook_comment_moderations", "messages"
   add_foreign_key "macro_executions", "conversations"
@@ -1388,9 +1437,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
   add_foreign_key "pipeline_item_products", "product_variants", on_delete: :restrict
   add_foreign_key "pipeline_item_products", "products", on_delete: :restrict
   add_foreign_key "pipeline_items", "contacts"
+  add_foreign_key "pipeline_items", "contacts", column: "company_id"
+  add_foreign_key "pipeline_items", "contacts", column: "primary_contact_id"
   add_foreign_key "pipeline_items", "conversations"
   add_foreign_key "pipeline_items", "pipeline_stages"
   add_foreign_key "pipeline_items", "pipelines"
+  add_foreign_key "pipeline_items", "users", column: "owner_id"
   add_foreign_key "pipeline_service_definitions", "pipelines"
   add_foreign_key "pipeline_tasks", "pipeline_items"
   add_foreign_key "pipeline_tasks", "pipeline_tasks", column: "parent_task_id"
@@ -1400,6 +1452,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_05_120000) do
   add_foreign_key "scheduled_action_notifications", "scheduled_actions", on_delete: :cascade
   add_foreign_key "scheduled_actions", "contacts", on_delete: :cascade
   add_foreign_key "scheduled_actions", "conversations", on_delete: :cascade
+  add_foreign_key "scheduled_actions", "pipeline_items", column: "deal_id"
   add_foreign_key "setup_survey_responses", "users"
   add_foreign_key "stage_inactivity_executions", "pipeline_items", on_delete: :cascade
   add_foreign_key "stage_movements", "pipeline_items"
