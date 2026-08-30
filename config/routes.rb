@@ -564,6 +564,7 @@ Rails.application.routes.draw do
       post 'pipeline_tasks/for_conversation', to: 'pipeline_tasks#for_conversation'
 
       resources :pipelines, controller: 'pipelines' do
+        resources :deals, only: [:index, :create], controller: 'deals'
         collection do
           get :stats
           get 'by_conversation/:conversation_id', action: :by_conversation, as: :by_conversation
@@ -614,6 +615,13 @@ Rails.application.routes.draw do
           end
         end
         resources :pipeline_service_definitions, except: [:new, :edit], controller: 'pipeline_service_definitions'
+      end
+
+      resources :deals, only: [:show, :update, :destroy], controller: 'deals' do
+        resources :contacts, only: [:index, :create, :destroy], controller: 'deal_contacts'
+        resources :conversations, only: [:index, :create, :destroy], controller: 'deal_conversations'
+        resources :files, only: [:index, :create, :destroy], controller: 'deal_files'
+        resources :history, only: [:index], controller: 'deal_history'
       end
 
       namespace :integrations do
