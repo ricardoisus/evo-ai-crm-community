@@ -11,9 +11,7 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
   end
 
   def down
-    remove_foreign_key :scheduled_actions, column: :deal_uuid if foreign_key_exists?(:scheduled_actions, column: :deal_uuid)
-    remove_column :scheduled_actions, :deal_uuid if column_exists?(:scheduled_actions, :deal_uuid)
-    remove_column :scheduled_actions, :legacy_deal_id if column_exists?(:scheduled_actions, :legacy_deal_id)
+    restore_scheduled_action_legacy_deal_id
     drop_table :deal_history_events, if_exists: true
     drop_table :deal_conversations, if_exists: true
     drop_table :deal_contacts, if_exists: true
@@ -79,17 +77,65 @@ class EvolvePipelineItemsIntoDeals < ActiveRecord::Migration[7.1]
   def migrate_scheduled_action_deal_id
     return unless table_exists?(:scheduled_actions)
 
-    # Expand phase: keep the original bigint deal_id untouched so the previous
-    # application image can continue reading/writing during rollout or rollback.
-    # A later contract migration may rename deal_uuid after the rollback window.
-    add_column :scheduled_actions, :legacy_deal_id, :bigint unless column_exists?(:scheduled_actions, :legacy_deal_id)
-    add_index :scheduled_actions, :legacy_deal_id, if_not_exists: true
-    add_column :scheduled_actions, :deal_uuid, :uuid unless column_exists?(:scheduled_actions, :deal_uuid)
-    add_index :scheduled_actions, :deal_uuid, if_not_exists: true
-    unless foreign_key_exists?(:scheduled_actions, :pipeline_items, column: :deal_uuid)
-      add_foreign_key :scheduled_actions, :pipeline_items, column: :deal_uuid
+    # Preserve the former bigint identifier under an explicit compatibility
+    # name and make deal_id the canonical UUID foreign key.
+    if scheduled_action_deal_id_type == :integer
+      remove_index :scheduled_actions, name: 'idx_scheduled_actions_deal_status', if_exists: true
+      remove_index :scheduled_actions, :deal_id, if_exists: true
+      if column_exists?(:scheduled_actions, :legacy_deal_id)
+        execute 'UPDATE scheduled_actions SET legacy_deal_id = deal_id WHERE legacy_deal_id IS NULL AND deal_id IS NOT NULL'
+        remove_column :scheduled_actions, :deal_id
+      else
+        rename_column :scheduled_actions, :deal_id, :legacy_deal_id
+      end
     end
-    execute 'UPDATE scheduled_actions SET legacy_deal_id = deal_id WHERE legacy_deal_id IS NULL AND deal_id IS NOT NULL'
+
+    add_index :scheduled_actions, :legacy_deal_id, if_not_exists: true
+    add_column :scheduled_actions, :deal_id, :uuid unless column_exists?(:scheduled_actions, :deal_id)
+    migrate_draft_deal_uuid
+    add_index :scheduled_actions, :deal_id, if_not_exists: true
+    add_index :scheduled_actions, [:deal_id, :status], name: 'idx_scheduled_actions_deal_status', if_not_exists: true
+    unless foreign_key_exists?(:scheduled_actions, :pipeline_items, column: :deal_id)
+      add_foreign_key :scheduled_actions, :pipeline_items, column: :deal_id
+    end
+  end
+
+  def restore_scheduled_action_legacy_deal_id
+    return unless table_exists?(:scheduled_actions)
+
+    remove_foreign_key :scheduled_actions, column: :deal_uuid if foreign_key_exists?(:scheduled_actions, column: :deal_uuid)
+    remove_column :scheduled_actions, :deal_uuid if column_exists?(:scheduled_actions, :deal_uuid)
+    remove_foreign_key :scheduled_actions, column: :deal_id if foreign_key_exists?(:scheduled_actions, column: :deal_id)
+
+    if scheduled_action_deal_id_type == :uuid
+      remove_index :scheduled_actions, name: 'idx_scheduled_actions_deal_status', if_exists: true
+      remove_index :scheduled_actions, :deal_id, if_exists: true
+      remove_column :scheduled_actions, :deal_id
+    end
+
+    return unless column_exists?(:scheduled_actions, :legacy_deal_id)
+
+    if column_exists?(:scheduled_actions, :deal_id)
+      remove_column :scheduled_actions, :legacy_deal_id
+    else
+      remove_index :scheduled_actions, :legacy_deal_id, if_exists: true
+      rename_column :scheduled_actions, :legacy_deal_id, :deal_id
+      add_index :scheduled_actions, :deal_id, if_not_exists: true
+      add_index :scheduled_actions, [:deal_id, :status], name: 'idx_scheduled_actions_deal_status', if_not_exists: true
+    end
+  end
+
+  def scheduled_action_deal_id_type
+    connection.columns(:scheduled_actions).find { |column| column.name == 'deal_id' }&.type
+  end
+
+  def migrate_draft_deal_uuid
+    return unless column_exists?(:scheduled_actions, :deal_uuid)
+
+    execute 'UPDATE scheduled_actions SET deal_id = deal_uuid WHERE deal_id IS NULL AND deal_uuid IS NOT NULL'
+    remove_foreign_key :scheduled_actions, column: :deal_uuid if foreign_key_exists?(:scheduled_actions, column: :deal_uuid)
+    remove_index :scheduled_actions, :deal_uuid, if_exists: true
+    remove_column :scheduled_actions, :deal_uuid
   end
 
   def backfill_deals

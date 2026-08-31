@@ -21,7 +21,8 @@
 #  updated_at           :datetime         not null
 #  contact_id           :uuid
 #  conversation_id      :uuid
-#  deal_id              :bigint
+#  deal_id              :uuid
+#  legacy_deal_id       :bigint
 #  notify_user_id       :uuid
 #  template_id          :bigint
 #
@@ -34,6 +35,7 @@
 #  index_scheduled_actions_on_contact_id       (contact_id)
 #  index_scheduled_actions_on_conversation_id  (conversation_id)
 #  index_scheduled_actions_on_deal_id          (deal_id)
+#  index_scheduled_actions_on_legacy_deal_id   (legacy_deal_id)
 #  index_scheduled_actions_on_notify_user_id   (notify_user_id)
 #  index_scheduled_actions_on_scheduled_for    (scheduled_for)
 #  index_scheduled_actions_on_status           (status)
@@ -42,6 +44,7 @@
 #
 #  fk_rails_...  (contact_id => contacts.id) ON DELETE => cascade
 #  fk_rails_...  (conversation_id => conversations.id) ON DELETE => cascade
+#  fk_rails_...  (deal_id => pipeline_items.id)
 #
 
 class ScheduledAction < ApplicationRecord
@@ -50,7 +53,7 @@ class ScheduledAction < ApplicationRecord
   # Associations
   belongs_to :contact, optional: true
   belongs_to :conversation, optional: true
-  belongs_to :deal, class_name: 'PipelineItem', foreign_key: :deal_uuid, optional: true
+  belongs_to :deal, class_name: 'PipelineItem', inverse_of: :scheduled_actions, optional: true
   belongs_to :creator, class_name: 'User', foreign_key: :created_by
   belongs_to :notifier, class_name: 'User', foreign_key: :notify_user_id, optional: true
   has_many :execution_logs, class_name: 'ScheduledActionExecutionLog', dependent: :destroy_async
@@ -92,16 +95,15 @@ class ScheduledAction < ApplicationRecord
   validates :payload, presence: true
   validates :recurrence_type, inclusion: { in: RECURRENCE_TYPES }, allow_nil: true
 
-  before_validation :preserve_legacy_deal_target
   validate :scheduled_for_cannot_be_in_past, on: :create
   validate :at_least_one_target_present
 
   # Scopes
   scope :for_deal, lambda { |target_id|
     if target_id.to_s.match?(UUID_PATTERN)
-      where(deal_uuid: target_id)
+      where(deal_id: target_id)
     else
-      where(deal_id: target_id).or(where(legacy_deal_id: target_id))
+      where(legacy_deal_id: target_id)
     end
   }
   scope :for_contact, ->(contact_id) { where(contact_id: contact_id) }
@@ -120,17 +122,17 @@ class ScheduledAction < ApplicationRecord
   scope :retriable, -> { failed.where('retry_count < max_retries') }
 
   def deal_id=(target_id)
-    if target_id.to_s.match?(UUID_PATTERN)
-      self.deal_uuid = target_id
+    if target_id.present? && !target_id.to_s.match?(UUID_PATTERN)
+      self.legacy_deal_id = target_id
       super(nil)
     else
+      self.legacy_deal_id = nil
       super(target_id)
-      self.legacy_deal_id = target_id if target_id.present?
     end
   end
 
   def canonical_deal_id
-    deal_uuid.presence || legacy_deal_id.presence || self[:deal_id]
+    self[:deal_id].presence || legacy_deal_id.presence
   end
 
   # State machine methods
@@ -204,7 +206,6 @@ class ScheduledAction < ApplicationRecord
 
     ScheduledAction.create!(
       deal_id: self[:deal_id],
-      deal_uuid: deal_uuid,
       legacy_deal_id: legacy_deal_id,
       contact_id: contact_id,
       conversation_id: conversation_id,
@@ -244,10 +245,6 @@ class ScheduledAction < ApplicationRecord
 
   private
 
-  def preserve_legacy_deal_target
-    self.legacy_deal_id ||= self[:deal_id] if self[:deal_id].present?
-  end
-
   def scheduled_for_cannot_be_in_past
     return unless scheduled_for.present? && scheduled_for < Time.current
 
@@ -255,7 +252,7 @@ class ScheduledAction < ApplicationRecord
   end
 
   def at_least_one_target_present
-    return if deal_uuid.present? || self[:deal_id].present? || legacy_deal_id.present? || contact_id.present? || conversation_id.present?
+    return if self[:deal_id].present? || legacy_deal_id.present? || contact_id.present? || conversation_id.present?
 
     errors.add(:base, 'must have at least one target (deal, contact, or conversation)')
   end
