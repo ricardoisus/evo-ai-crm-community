@@ -60,7 +60,7 @@ class PipelineItem < ApplicationRecord
   has_many :conversations, through: :deal_conversations
   has_many :deal_history_events
   has_many :attachments, as: :attachable, dependent: :destroy
-  has_many :scheduled_actions, foreign_key: :deal_uuid, dependent: :nullify
+  has_many :scheduled_actions, foreign_key: :deal_id, inverse_of: :deal, dependent: :nullify
   has_many :tasks, class_name: 'PipelineTask', dependent: :destroy
   has_many :pipeline_item_products, dependent: :destroy
   has_many :products, through: :pipeline_item_products

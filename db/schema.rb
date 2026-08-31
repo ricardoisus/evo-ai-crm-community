@@ -960,9 +960,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
     t.index ["contact_id"], name: "index_pipeline_items_on_contact_id"
     t.index ["conversation_id", "pipeline_id"], name: "index_pipeline_items_on_conversation_and_pipeline"
     t.index ["custom_fields"], name: "index_pipeline_items_on_custom_fields", using: :gin
+    t.index ["owner_id"], name: "index_pipeline_items_on_owner_id"
     t.index ["pipeline_id"], name: "index_pipeline_items_on_pipeline_id"
     t.index ["pipeline_stage_id"], name: "index_pipeline_items_on_pipeline_stage_id"
-    t.index ["owner_id"], name: "index_pipeline_items_on_owner_id"
     t.index ["primary_contact_id"], name: "index_pipeline_items_on_primary_contact_id"
   end
 
@@ -1183,9 +1183,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
   end
 
   create_table "scheduled_actions", force: :cascade do |t|
-    t.bigint "deal_id"
-    t.bigint "legacy_deal_id"
-    t.uuid "deal_uuid"
     t.uuid "contact_id"
     t.uuid "conversation_id"
     t.string "action_type", limit: 50, null: false
@@ -1204,13 +1201,14 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
     t.datetime "updated_at", null: false
     t.uuid "notify_user_id"
     t.datetime "notification_sent_at"
+    t.bigint "legacy_deal_id"
+    t.uuid "deal_id"
     t.index ["action_type"], name: "index_scheduled_actions_on_action_type"
     t.index ["contact_id", "status"], name: "idx_scheduled_actions_contact_status"
     t.index ["contact_id"], name: "index_scheduled_actions_on_contact_id"
     t.index ["conversation_id"], name: "index_scheduled_actions_on_conversation_id"
     t.index ["deal_id", "status"], name: "idx_scheduled_actions_deal_status"
     t.index ["deal_id"], name: "index_scheduled_actions_on_deal_id"
-    t.index ["deal_uuid"], name: "index_scheduled_actions_on_deal_uuid"
     t.index ["legacy_deal_id"], name: "index_scheduled_actions_on_legacy_deal_id"
     t.index ["notify_user_id"], name: "index_scheduled_actions_on_notify_user_id"
     t.index ["scheduled_for"], name: "index_scheduled_actions_on_scheduled_for"
@@ -1453,7 +1451,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_29_120000) do
   add_foreign_key "scheduled_action_notifications", "scheduled_actions", on_delete: :cascade
   add_foreign_key "scheduled_actions", "contacts", on_delete: :cascade
   add_foreign_key "scheduled_actions", "conversations", on_delete: :cascade
-  add_foreign_key "scheduled_actions", "pipeline_items", column: "deal_uuid"
+  add_foreign_key "scheduled_actions", "pipeline_items", column: "deal_id"
   add_foreign_key "setup_survey_responses", "users"
   add_foreign_key "stage_inactivity_executions", "pipeline_items", on_delete: :cascade
   add_foreign_key "stage_movements", "pipeline_items"
