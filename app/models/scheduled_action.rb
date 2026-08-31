@@ -123,9 +123,10 @@ class ScheduledAction < ApplicationRecord
 
   def deal_id=(target_id)
     if target_id.present? && !target_id.to_s.match?(UUID_PATTERN)
-      self.legacy_deal_id = target_id if target_id.present?
+      self.legacy_deal_id = target_id
       super(nil)
     else
+      self.legacy_deal_id = nil
       super(target_id)
     end
   end
