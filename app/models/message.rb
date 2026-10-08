@@ -138,9 +138,27 @@ class Message < ApplicationRecord
   after_create_commit :execute_after_create_commit_callbacks, unless: :imported?
   after_create_commit :publish_message_created, unless: :imported?
   after_create_commit :sync_message_event, unless: :imported?
-  after_update_commit :dispatch_update_event
-  after_update_commit :publish_message_updated
+  after_create_commit :broadcast_observed_message, if: :whatsapp_observed?
+  after_update_commit :dispatch_update_event, unless: :whatsapp_observed?
+  after_update_commit :publish_message_updated, unless: :whatsapp_observed?
+  after_update_commit :broadcast_observed_update, if: :whatsapp_observed?
   after_destroy_commit :publish_message_deleted
+
+  def whatsapp_observed?
+    content_attributes['whatsapp_observed'] == true
+  end
+
+  def broadcast_observed_message
+    # Only the UI listener: no automation, bot, reply, read receipt or external webhook.
+    refresh_conversation_activity!(created_at)
+    event = Struct.new(:data).new({ message: self, previous_changes: previous_changes })
+    ActionCableListener.instance.message_created(event)
+  end
+
+  def broadcast_observed_update
+    event = Struct.new(:data).new({ message: self, previous_changes: previous_changes })
+    ActionCableListener.instance.message_updated(event)
+  end
 
   def channel_token
     @token ||= inbox.channel.try(:page_access_token)
