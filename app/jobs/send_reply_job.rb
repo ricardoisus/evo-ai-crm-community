@@ -3,6 +3,7 @@ class SendReplyJob < ApplicationJob
 
   def perform(message_id)
     message = Message.find(message_id)
+    return if message.whatsapp_observed?
     conversation = message.conversation
     channel_name = conversation.inbox.channel.class.to_s
 
