@@ -5,8 +5,13 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
   def perform(params = {})
     params = params.with_indifferent_access
     if params[:object] == 'whatsapp_business_account'
-      Webhooks::WhatsappMirrorJob.enqueue_allowed(params)
       failures = []
+      begin
+        Webhooks::WhatsappMirrorJob.enqueue_allowed(params)
+      rescue StandardError => e
+        # Finish local persistence, then retry the envelope to recover the mirror.
+        failures << e
+      end
       Whatsapp::CloudEventNormalizer.call(params).each do |event|
         begin
           channel = find_channel(event)
@@ -23,11 +28,7 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
           channel.with_lock do
             value = event.dig(:entry, 0, :changes, 0, :value)
             if value[:statuses].present?
-              Whatsapp::ObservedStatusService.new(channel.inbox).receive(value[:statuses].first)
-              # Preserve the existing contact BSUID enrichment on classic status envelopes.
-              if value[:contacts].present?
-                Whatsapp::IncomingMessageWhatsappCloudService.new(inbox: channel.inbox, params: event).perform
-              end
+              Whatsapp::ObservedStatusService.new(channel.inbox).receive(value[:statuses].first, value[:contacts])
             else
               perform_event(event)
               id = (value[:messages] || value[:message_echoes])&.first&.dig(:id)

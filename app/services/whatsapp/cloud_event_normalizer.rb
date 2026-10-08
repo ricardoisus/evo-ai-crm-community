@@ -67,8 +67,9 @@ class Whatsapp::CloudEventNormalizer
   def build_event(entry, change, body, kind, item)
     value = change[:value]
     standby = change[:field] == 'standby'
+    identity = kind == 'statuses' ? [item[:recipient_id], item[:recipient_user_id]] : [item[:from], item[:to]]
     contacts = Array(body[:contacts]).select do |contact|
-      contact.is_a?(Hash) && [contact[:wa_id], contact[:user_id]].compact.include?(item[:from])
+      contact.is_a?(Hash) && ([contact[:wa_id], contact[:user_id]].compact & identity.compact).any?
     end
     field = kind == 'message_echoes' ? 'smb_message_echoes' : 'messages'
     normalized = value.except(:standby, :messages, :message_echoes, :statuses, :contacts)

@@ -30,8 +30,9 @@ class Whatsapp::IncomingMessageWhatsappCloudService < Whatsapp::IncomingMessageB
   def set_conversation
     return super unless params[:observed]
 
-    @conversation = @contact_inbox.conversations.where.not(status: :resolved).last ||
-                    @contact_inbox.conversations.create!(inbox: inbox, contact: @contact, source: :imported)
+    conversations = @contact_inbox.conversations
+    conversations = conversations.where.not(status: :resolved) unless inbox.lock_to_single_conversation
+    @conversation = conversations.last || conversations.create!(inbox: inbox, contact: @contact, source: :imported)
   end
 
   def create_message(message)

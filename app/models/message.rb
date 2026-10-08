@@ -187,9 +187,10 @@ class Message < ApplicationRecord
       else raise ArgumentError, "unknown audience #{audience.inspect}"
       end
 
-    return content_attributes unless masked
+    attributes = content_attributes.except('observed_payload')
+    return attributes unless masked
 
-    ContactPiiMasker.scrub_pii_content_attributes(content_attributes)
+    ContactPiiMasker.scrub_pii_content_attributes(attributes)
   end
 
   def push_event_data

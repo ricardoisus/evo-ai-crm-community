@@ -106,13 +106,20 @@ RSpec.describe 'Meta standby observation' do
     file.binmode
     file.write(Base64.decode64('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1cAAAAASUVORK5CYII='))
     file.rewind
-    expect_any_instance_of(Whatsapp::IncomingMessageWhatsappCloudService).to receive(:download_attachment_file)
-      .with({ id: 'media-id' }).and_return(file)
+    metadata_request = stub_request(:get, inbox.channel.media_url('media-id'))
+      .with(headers: inbox.channel.api_headers)
+      .to_return(status: 200, body: { url: 'https://media.example/synthetic.png' }.to_json,
+                 headers: { 'Content-Type' => 'application/json' })
+    download_request = stub_request(:get, 'https://media.example/synthetic.png')
+      .with(headers: inbox.channel.api_headers)
+      .to_return(status: 200, body: file.read, headers: { 'Content-Type' => 'image/png' })
     Webhooks::WhatsappEventsJob.new.perform(envelope({ message_echoes: [media] }))
     msg = inbox.messages.find_by!(source_id: 'media')
     expect(msg.content).to eq('Synthetic image')
     expect(msg.attachments.count).to eq(1)
     expect(msg.attachments.first.file).to be_attached
+    expect(metadata_request).to have_been_requested.once
+    expect(download_request).to have_been_requested.once
     expect(WebMock).not_to have_requested(:post, /graph.facebook.com/)
   ensure
     file&.close!
@@ -123,19 +130,88 @@ RSpec.describe 'Meta standby observation' do
     allow(ENV).to receive(:[]).with('WHATSAPP_MIRROR_ENABLED').and_return('true')
     allowed = envelope({ message_echoes: [echo] }, phone: Webhooks::WhatsappMirrorJob::PHONES.first)
     allowed[:entry].first[:id] = Webhooks::WhatsappMirrorJob::WABA
+    allowed[:entry].first[:changes] << envelope({}, phone: 'FORBIDDEN')[:entry].first[:changes].first
     allowed[:entry] << envelope({ message_echoes: [echo('other')] })[:entry].first
     clear_enqueued_jobs
     Webhooks::WhatsappMirrorJob.enqueue_allowed(allowed)
     expect(enqueued_jobs.count).to eq(1)
-    payload = enqueued_jobs.first[:args].first
+    payload = ActiveJob::Arguments.deserialize(enqueued_jobs.first[:args]).first.with_indifferent_access
     expect(payload['entry'].size).to eq(1)
+    expect(payload['entry'].first['changes'].size).to eq(1)
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('WHATSAPP_MIRROR_URL').and_return('https://mirror.example/webhook/meta/mirror')
     allow(ENV).to receive(:fetch).with('WHATSAPP_MIRROR_TOKEN').and_return('synthetic-token-32-characters-long')
     stub_request(:post, 'https://mirror.example/webhook/meta/mirror').to_return(status: 503)
-    expect { Webhooks::WhatsappMirrorJob.new.perform(payload, Time.current.to_i) }.to raise_error(/503/)
+    clear_enqueued_jobs
+    Webhooks::WhatsappMirrorJob.perform_now(payload, Time.current.to_i)
+    expect(enqueued_jobs.map { |job| job[:job] }).to eq([Webhooks::WhatsappMirrorJob])
+    expect(enqueued_jobs.first[:at]).to be > Time.current.to_f
     stub_request(:post, 'https://mirror.example/webhook/meta/mirror').to_return(status: 200, body: '{"status":"persisted"}')
-    expect { Webhooks::WhatsappMirrorJob.new.perform(payload, Time.current.to_i) }.not_to raise_error
+    perform_enqueued_jobs
+    expect(WebMock).to have_requested(:post, 'https://mirror.example/webhook/meta/mirror').twice
   end
 
+
+  it 'retains early failure diagnostics and status identity without publishing automation' do
+    inbox = make_inbox('PHONE_TEST', '+15550000001')
+    job = Webhooks::WhatsappEventsJob.new
+    status = { id: echo[:id], status: 'failed', recipient_id: '5511987654321', recipient_user_id: 'US.synthetic',
+               errors: [{ code: 131000, title: 'Synthetic failure' }] }
+    contact = { wa_id: '5511987654321', user_id: 'US.synthetic', profile: { username: 'synthetic' } }
+    job.perform(envelope({ statuses: [status], contacts: [contact] }))
+    expect_any_instance_of(Messages::StatusUpdateService).not_to receive(:perform)
+    job.perform(envelope({ message_echoes: [echo] }))
+    message = inbox.messages.first
+    expect(message).to be_failed
+    expect(message.content_attributes['external_error']).to eq('131000: Synthetic failure')
+    expect(message.conversation.contact_inbox.bsuid).to eq('US.synthetic')
+    expect(message.conversation.contact_inbox.whatsapp_username).to eq('synthetic')
+  end
+
+  it 'keeps a pending read terminal even when failure arrives before its echo' do
+    inbox = make_inbox('PHONE_TEST', '+15550000001')
+    job = Webhooks::WhatsappEventsJob.new
+    %w[read failed delivered].each { |status| job.perform(envelope({ statuses: [{ id: echo[:id], status: status }] })) }
+    job.perform(envelope({ message_echoes: [echo] }))
+    expect(inbox.messages.first).to be_read
+  end
+
+  it 'commits CRM messages even if mirror enqueue fails and retries without duplication' do
+    inbox = make_inbox('PHONE_TEST', '+15550000001')
+    allow(Webhooks::WhatsappMirrorJob).to receive(:enqueue_allowed).and_raise('Queue unavailable')
+    data = envelope({ message_echoes: [echo] })
+    expect { Webhooks::WhatsappEventsJob.new.perform(data) }.to raise_error('Queue unavailable')
+    expect(inbox.messages.count).to eq(1)
+    allow(Webhooks::WhatsappMirrorJob).to receive(:enqueue_allowed).and_return(true)
+    Webhooks::WhatsappEventsJob.new.perform(data)
+    expect(inbox.messages.count).to eq(1)
+  end
+
+  it 'keeps link media as metadata and excludes raw observation data from all egress audiences' do
+    inbox = make_inbox('PHONE_TEST', '+15550000001')
+    media = echo('link')
+    media[:message] = { to: '5511987654321', type: 'image', image: { link: 'https://untrusted.example/image.png' } }
+    expect(AgentBots::RemoteMediaAttacher).not_to receive(:build_attachments)
+    Webhooks::WhatsappEventsJob.new.perform(envelope({ message_echoes: [media] }))
+    message = inbox.messages.first
+    expect(message.content_attributes['observed_payload']).to be_present
+    %i[broadcast per_request].each do |audience|
+      expect(message.content_attributes_for_egress(audience: audience)).not_to have_key('observed_payload')
+    end
+    expect(message.push_event_data[:content_attributes]).not_to have_key('observed_payload')
+    expect(message.attachments).to be_empty
+  end
+
+  it 'reuses a resolved locked conversation for observed inbound messages without reopening it' do
+    inbox = make_inbox('PHONE_TEST', '+15550000001')
+    inbox.update!(lock_to_single_conversation: true)
+    job = Webhooks::WhatsappEventsJob.new
+    job.perform(envelope({ message_echoes: [echo] }))
+    conversation = inbox.messages.first.conversation
+    conversation.update!(status: :resolved)
+    inbound = { id: 'incoming-locked', from: '5511987654321', type: 'text', timestamp: '1780000000', text: { body: 'Incoming' } }
+    job.perform(envelope({ messages: [inbound] }))
+    expect(inbox.messages.find_by!(source_id: 'incoming-locked').conversation_id).to eq(conversation.id)
+    expect(conversation.reload).to be_resolved
+  end
 end

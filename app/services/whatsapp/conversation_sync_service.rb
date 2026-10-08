@@ -304,10 +304,7 @@ class Whatsapp::ConversationSyncService
     media_id = media_data[:id]
 
     if media_id.blank?
-      if media_data[:link].present?
-        AgentBots::RemoteMediaAttacher.build_attachments(message, [{ url: media_data[:link],
-          file_type: echo_data[:type] == 'document' ? 'file' : echo_data[:type] }])
-      end
+      # External links are metadata only; fetch authenticated Meta media IDs exclusively.
       attach_echo_media_info_fallback(message, echo_data) if message.attachments.empty?
       return
     end
