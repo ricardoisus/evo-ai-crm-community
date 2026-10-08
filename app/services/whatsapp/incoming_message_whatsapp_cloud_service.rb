@@ -20,7 +20,9 @@ class Whatsapp::IncomingMessageWhatsappCloudService < Whatsapp::IncomingMessageB
   def set_contact
     value = processed_params
     if value[:contacts].blank? && value[:messages]&.first&.dig(:from).present?
-      value[:contacts] = [{ wa_id: value[:messages].first[:from] }].map(&:with_indifferent_access)
+      sender = value[:messages].first[:from]
+      key = sender.match?(/\A\+?\d+\z/) ? :wa_id : :user_id
+      value[:contacts] = [{ key => sender }.with_indifferent_access]
     end
     super
   end

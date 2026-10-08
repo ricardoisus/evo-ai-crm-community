@@ -24,6 +24,10 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
             value = event.dig(:entry, 0, :changes, 0, :value)
             if value[:statuses].present?
               Whatsapp::ObservedStatusService.new(channel.inbox).receive(value[:statuses].first)
+              # Preserve the existing contact BSUID enrichment on classic status envelopes.
+              if value[:contacts].present?
+                Whatsapp::IncomingMessageWhatsappCloudService.new(inbox: channel.inbox, params: event).perform
+              end
             else
               perform_event(event)
               id = (value[:messages] || value[:message_echoes])&.first&.dig(:id)

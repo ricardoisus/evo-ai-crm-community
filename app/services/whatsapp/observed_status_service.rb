@@ -15,7 +15,7 @@ class Whatsapp::ObservedStatusService
 
     key = cache_key(status[:id])
     old = Rails.cache.read(key)
-    return if old && RANK.fetch(old['status'], 0) >= RANK.fetch(status[:status])
+    return if old && (%w[read failed].include?(old['status']) || RANK.fetch(old['status'], 0) >= RANK.fetch(status[:status]))
 
     Rails.cache.write(key, status.slice(:id, :status).stringify_keys, expires_in: TTL)
   end
@@ -40,7 +40,9 @@ class Whatsapp::ObservedStatusService
 
       message.update!(status: status[:status])
     else
-      Messages::StatusUpdateService.new(message, status[:status]).perform
+      error = Array(status[:errors]).first
+      external_error = error && status[:status] == 'failed' ? "#{error[:code]}: #{error[:title]}".truncate(255) : nil
+      Messages::StatusUpdateService.new(message, status[:status], external_error).perform
     end
   end
 
