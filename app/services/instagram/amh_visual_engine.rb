@@ -20,6 +20,8 @@ class Instagram::AmhVisualEngine
   end
 
   def self.validate!(graph)
+    return Instagram::AmhGraph.validate!(graph) if Instagram::AmhGraph.v2?(graph)
+
     require_valid!(graph.is_a?(Hash) && graph.keys.sort == %w[edges nodes], 'Grafo inválido')
     require_valid!(JSON.generate(graph).bytesize <= 20_000, 'Grafo excede limite')
     validate_nodes!(graph['nodes'])
@@ -156,7 +158,7 @@ class Instagram::AmhVisualEngine
     return text unless text.nil?
     return '' if fixture == 'negative'
 
-    graph['nodes'].find { |node| node['id'] == 'keyword' }.fetch('data').fetch('keywords').first
+    graph['nodes'].find { |node| node['type'] == 'keyword' }&.dig('data', 'keywords')&.first || 'AMH'
   end
 
   def self.result_metadata(data, text)

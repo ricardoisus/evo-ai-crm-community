@@ -9,7 +9,11 @@ class Instagram::AmhContextRouter
       context = load_context(event) || { 'decisions' => {} }
       next if context.fetch('decisions', {}).key?(version['id'])
 
-      material = version['graph']['nodes'].find { |n| n['id'] == 'material' }['data']
+      material = if Instagram::AmhGraph.v2?(version['graph'])
+                   Instagram::AmhGraph.runtime_data(version['graph'], Instagram::AmhExecutor.event_data(event.contract, event))['material']
+                 else
+                   version['graph']['nodes'].find { |n| n['id'] == 'material' }['data']
+                 end
       choice = Instagram::AmhMaterialInventory.match(event.contract, material.fetch('mappings'))
       unless choice
         context.merge!(fetch_context(event, inbox)) unless context.key?('caption')

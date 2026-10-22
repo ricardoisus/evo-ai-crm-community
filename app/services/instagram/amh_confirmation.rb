@@ -30,13 +30,17 @@ class Instagram::AmhConfirmation
     raise Unavailable unless version
 
     graph = Instagram::AmhVisualEngine.validate!(version.fetch('graph'))
-    data = graph['nodes'].to_h { |node| [node['id'], node['data']] }
+    data = if Instagram::AmhGraph.v2?(graph)
+             Instagram::AmhGraph.runtime_data(graph, Instagram::AmhExecutor.event_data(original, delivery.inbound_event))
+           else
+             graph['nodes'].to_h { |node| [node['id'], node['data']] }
+           end
     raise Unavailable unless data['reply']['confirmationRequired'] == true
 
     source = Instagram::AmhExecutor.event_data(original, delivery.inbound_event)
     Instagram::AmhShortLink.validate_event!(source, data)
     data = data.deep_dup
-    if data['material']['mode'] == 'context'
+    if Instagram::AmhGraph.v2?(graph) || data['material']['mode'] == 'context'
       raise Unavailable unless Instagram::AmhVisualEngine::MATERIALS.include?(delivery.resolved_material)
 
       data['material']['material'] = delivery.resolved_material
@@ -49,6 +53,10 @@ class Instagram::AmhConfirmation
   def self.call(event:)
     id = Instagram::AmhConfirmationToken.read(event.contract['amh_confirmation'])
     raise Unavailable unless id
+
+    candidate = Instagram::AmhDelivery.find_by(id: id)
+    version = candidate&.proof&.versions&.find { |v| v['id'] == candidate.version_id }
+    return Instagram::AmhGraphExecutor.confirm(event: event, delivery: candidate) if version && Instagram::AmhGraph.v2?(version['graph'])
 
     row, inbox, data, link = Instagram::AmhVisualProof.with_mapping_lock do
       delivery = Instagram::AmhDelivery.find_by(id: id)

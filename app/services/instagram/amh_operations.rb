@@ -28,7 +28,7 @@ class Instagram::AmhOperations
 
   def self.rules
     Instagram::AmhVisualProof.select(Arel.sql(<<~SQL.squish)).order(updated_at: :desc, id: :desc).limit(LIMIT).map { |proof| rule(proof) }
-      id, name, draft, audience,
+      id, name, draft, audience, active_version_id, versions -> -1 AS operation_published_version,
       COALESCE((SELECT v FROM jsonb_array_elements(versions) v WHERE v->>'id' = active_version_id LIMIT 1), versions -> -1) AS operation_version,
       jsonb_array_length(ledger) AS operation_simulations,
       ledger -> -1 AS operation_last_simulation
@@ -38,12 +38,40 @@ class Instagram::AmhOperations
   def self.rule(proof)
     version = proof['operation_version']
     graph = version ? version.fetch('graph') : proof.draft
+    return graph_rule(proof, version, graph) if Instagram::AmhGraph.v2?(graph)
+
     data = graph.fetch('nodes').to_h { |node| [node.fetch('id'), node.fetch('data')] }
-    { id: proof.id, name: proof.name, state: proof.audience, version: version&.fetch('number'),
-      draft_changed: version.present? && proof.draft != graph,
-      scope: data.fetch('scope').slice('account', 'ad', 'media', 'allContent'),
-      material: material_label(data.fetch('material')), keywords: data.fetch('keyword')['keywords'],
-      preview: data.fetch('reply')['text'] }.merge(simulation_summary(proof))
+    description = { scope: data.fetch('scope').slice('account', 'ad', 'media', 'allContent'),
+                    material: material_label(data.fetch('material')), keywords: data.fetch('keyword')['keywords'],
+                    preview: data.fetch('reply')['text'] }
+    base_summary(proof, version).merge(description).merge(version_state(proof, version)).merge(simulation_summary(proof))
+  end
+
+  def self.base_summary(proof, version)
+    { id: proof.id, name: proof.name, state: proof.audience, version: version&.fetch('number') }
+  end
+
+  def self.graph_rule(proof, version, graph)
+    scope = graph_parameters(graph, 'scope')
+    material = graph_parameters(graph, 'material')
+    summary = { id: proof.id, name: proof.name, state: proof.audience, version: version&.fetch('number'),
+                scope: scope.slice('account', 'ad', 'media', 'allContent'), material: material_label(material) }
+    summary.merge(graph_description(graph)).merge(version_state(proof, version)).merge(simulation_summary(proof))
+  end
+
+  def self.graph_parameters(graph, type)
+    graph['nodes'].find { |n| n['type'] == type }&.fetch('data') || {}
+  end
+
+  def self.graph_description(graph)
+    { keywords: graph['nodes'].select { |n| n['type'] == 'keyword' }.flat_map { |n| n['data']['keywords'] || [] },
+      preview: graph_parameters(graph, 'delivery')['text'] }
+  end
+
+  def self.version_state(proof, version)
+    published = proof['operation_published_version']
+    { published_version: published&.fetch('number'), running_version: proof.active_version_id.present? ? version&.fetch('number') : nil,
+      draft_changed: published.nil? || proof.draft != published['graph'] }
   end
 
   def self.material_label(material)

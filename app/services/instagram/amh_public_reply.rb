@@ -69,5 +69,5 @@ class Instagram::AmhPublicReply
 
     nil
   end
-  private_class_method :request, :persist, :failure_state, :reserve, :blocked_reason
+  private_class_method :failure_state, :reserve, :blocked_reason
 end

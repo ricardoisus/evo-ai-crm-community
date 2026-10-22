@@ -51,8 +51,14 @@ class Instagram::AmhRegistrationBinding
     end
 
     def validate_graph_context!(event, graph)
-      data = graph.fetch('nodes').to_h { |node| [node['id'], node['data']] }
       unavailable! unless event['comment_text'].is_a?(String)
+      if Instagram::AmhGraph.v2?(graph)
+        source = { 'account' => event.dig('identity', 'professional_account_id'), 'ad' => event['ad_id'],
+                   'media' => event['media_id'], 'text' => event['comment_text'] }
+        unavailable! unless Instagram::AmhGraph.prelude(graph, source)
+        return
+      end
+      data = graph.fetch('nodes').to_h { |node| [node['id'], node['data']] }
       # Evidence in the authenticated event is authoritative, even when the QA
       # issuance source omitted ad/media IDs. Never bypass the frozen scope.
       Instagram::AmhShortLink.validate_scope!(data.fetch('scope'), 'ad' => event['ad_id'], 'media' => event['media_id'])

@@ -39,12 +39,16 @@ class Instagram::AmhExecutor
     raise Unavailable unless version
 
     graph = Instagram::AmhVisualEngine.validate!(version.fetch('graph'))
-    data = graph.fetch('nodes').to_h { |node| [node['id'], node['data']] }
+    data = if Instagram::AmhGraph.v2?(graph)
+             Instagram::AmhGraph.runtime_data(graph, event_data(contract, event))
+           else
+             graph.fetch('nodes').to_h { |node| [node['id'], node['data']] }
+           end
     raise Unavailable unless data['reply']['confirmationRequired'] == true
 
     payload = event_data(contract, event)
     Instagram::AmhShortLink.validate_event!(payload, data)
-    if resolve_material
+    if resolve_material && !Instagram::AmhGraph.v2?(graph)
       material, source = Instagram::AmhContextRouter.resolve(event, data['material'], version)
       data = data.deep_dup
       data['material'] = data['material'].merge('material' => material, 'routingSource' => source)
@@ -55,6 +59,11 @@ class Instagram::AmhExecutor
   end
 
   def self.call(event:, proof:, explicit_test: false)
+    version = proof.versions.find { |v| v['id'] == proof.active_version_id }
+    if version && Instagram::AmhGraph.v2?(version['graph'])
+      return Instagram::AmhGraphExecutor.call(event: event, proof: proof, explicit_test: explicit_test)
+    end
+
     prepare_context!(event, proof, explicit_test: explicit_test)
     delivery, inbox, opening = Instagram::AmhVisualProof.with_mapping_lock do
       proof.reload

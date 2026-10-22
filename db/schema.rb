@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_10_21_160000) do
+ActiveRecord::Schema[7.1].define(version: 2026_10_22_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -724,6 +724,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_21_160000) do
     t.string "resolved_material"
     t.string "routing_source"
     t.integer "public_reply_variant"
+    t.jsonb "execution_trace", default: [], null: false
+    t.string "graph_cursor"
     t.index ["confirmation_event_id"], name: "index_instagram_amh_deliveries_on_confirmation_event_id", unique: true
     t.index ["inbound_event_id"], name: "index_instagram_amh_deliveries_on_inbound_event_id", unique: true
     t.index ["proof_id"], name: "index_instagram_amh_deliveries_on_proof_id"

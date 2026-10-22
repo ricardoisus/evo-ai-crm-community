@@ -7,7 +7,7 @@ class Instagram::AmhDelivery < ApplicationRecord
 
   def snapshot
     as_json(only: %i[id version_id resolved_material routing_source public_reply_variant state public_reply_state public_reply_reason
-                     public_reply_accepted_at prompt_state like_state like_reason like_accepted_at reason created_at updated_at prompt_accepted_at
+                     execution_trace graph_cursor public_reply_accepted_at prompt_state like_state like_reason like_accepted_at reason created_at updated_at prompt_accepted_at
                      confirmation_received_at])
   end
 end

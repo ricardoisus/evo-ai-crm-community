@@ -271,6 +271,8 @@ Rails.application.routes.draw do
           post :simulate
           post :activate
           post :test_reply
+          post :discard
+          post :validate_graph
           get :deliveries
         end
       end
