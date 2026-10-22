@@ -55,6 +55,24 @@ RSpec.describe Instagram::AmhExecutor do
       encrypted_contract: Instagram::AmhInboundEvent.encryptor.encrypt_and_sign(click))
   end
 
+  it 'renders the first name in the actual invitation and never fetches or sends twice' do
+    proof
+    reply = graph['nodes'].find { |node| node['id'] == 'reply' }['data']
+    reply['openingText'] = 'Oi, {{primeiro_nome}}! Posso enviar o acesso por aqui?'
+    proof.update!(draft: graph)
+    proof.publish_version!(proof.lock_version, 'qa')
+    proof.reload.update!(active_version_id: proof.versions.last['id'])
+    profile = stub_request(:get, 'https://graph.instagram.com/v23.0/90002?fields=name')
+      .to_return(status: 200, body: '{"name":"joNas silva"}', headers: { 'Content-Type' => 'application/json' })
+    prompt = stub_request(:post, "https://graph.instagram.com/v23.0/#{target}/messages")
+      .with { |request| JSON.parse(request.body).dig('message', 'text') == 'Oi, Jonas! Posso enviar o acesso por aqui?' }
+      .to_return(status: 200, body: '{"message_id":"qa-name"}', headers: { 'Content-Type' => 'application/json' })
+    expect(call.prompt_state).to eq('accepted')
+    expect(call.prompt_state).to eq('accepted')
+    expect(profile).to have_been_requested.once
+    expect(prompt).to have_been_requested.once
+  end
+
   it 'sends only an invitation before the click, then delivers one URL button to the same identity' do
     bodies = []
     request = stub_request(:post, "https://graph.instagram.com/v23.0/#{target}/messages").with { |req| bodies << JSON.parse(req.body); true }
