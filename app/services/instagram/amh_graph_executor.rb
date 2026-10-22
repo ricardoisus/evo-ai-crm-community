@@ -61,20 +61,33 @@ class Instagram::AmhGraphExecutor
 
   def confirm(event, delivery)
     @row = delivery
-    @inbox, @version, _, @payload, clicked_at = Instagram::AmhConfirmation.validate!(event, delivery)
+    @inbox, @version, _, @payload, clicked_at = Instagram::AmhConfirmation.validate!(event, delivery, allow_pending_prompt: true)
     confirmed = @row.with_lock do
-      raise Instagram::AmhConfirmation::NotReady if @row.state == 'pending' && @row.graph_cursor
+      if early_confirmation?
+        store_confirmation(event, clicked_at)
+        next false
+      end
       next false unless awaiting_confirmation?
 
       confirmation_node!
 
-      @row.update!(confirmation_event_id: event.id, confirmation_received_at: clicked_at)
+      store_confirmation(event, clicked_at)
       advance(['confirmed', 'passed', 'Clique real confirmado'])
       true
     end
     return @row unless confirmed
 
     drive
+  end
+
+  def early_confirmation?
+    %w[pending prompt_sending].include?(@row.state) && @row.graph_cursor.present?
+  end
+
+  def store_confirmation(event, clicked_at)
+    return if @row.confirmation_event_id
+
+    @row.update!(confirmation_event_id: event.id, confirmation_received_at: clicked_at)
   end
 
   def confirmation_node!
@@ -108,17 +121,26 @@ class Instagram::AmhGraphExecutor
       @node = graph['nodes'].find { |n| n['id'] == @row.graph_cursor }
       raise Unavailable unless @node
 
-      if @node['type'] == 'confirmation'
-        @row.update!(state: 'awaiting_confirmation', reason: 'waiting_for_button_click')
-        next false
-      end
+      next reserve_confirmation if @node['type'] == 'confirmation'
+
       @row.update!(execution_trace: @row.execution_trace + [trace('sending', 'Etapa reservada')])
       true
     end
   end
 
+  def reserve_confirmation
+    if @row.confirmation_event_id && @row.prompt_state == 'accepted'
+      advance(['confirmed', 'passed', 'Clique real confirmado'])
+      return :advanced
+    end
+    @row.update!(state: 'awaiting_confirmation', reason: 'waiting_for_button_click')
+    false
+  end
+
   def drive
-    while reserve_node
+    while (reserved = reserve_node)
+      next if reserved == :advanced
+
       active!
       result = send(HANDLERS.fetch(@node['type']))
       @row.with_lock { advance(result) }

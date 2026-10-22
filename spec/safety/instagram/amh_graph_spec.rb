@@ -117,6 +117,55 @@ RSpec.describe 'Instagram v2 graph transport and persistence' do
     expect(public_reply).to have_been_requested.once
     expect(Instagram::AmhShortLink.count).to eq(1)
   end
+
+  %w[invitation public_reply].each do |phase|
+    it "persists an early verified click during #{phase} and delivers only after invitation acceptance" do
+      callback = nil
+      messages = stub_request(:post, 'https://graph.instagram.com/v23.0/90001/messages').to_return do |request|
+        body = JSON.parse(request.body)
+        if phase == 'invitation' && body.dig('message', 'quick_replies')
+          pending = Instagram::AmhDelivery.find_by!(inbound_event_id: event.id)
+          expect(pending.prompt_state).to eq('sending')
+          callback = click(pending)
+          Instagram::AmhConfirmation.call(event: callback)
+          expect(pending.reload.confirmation_event_id).to eq(callback.id)
+          expect(Instagram::AmhShortLink.count).to eq(0)
+        end
+        { status: 200, body: '{"message_id":"qa"}', headers: { 'Content-Type' => 'application/json' } }
+      end
+      stub_request(:post, 'https://graph.instagram.com/v23.0/90009/replies').to_return do
+        if phase == 'public_reply'
+          pending = Instagram::AmhDelivery.find_by!(inbound_event_id: event.id)
+          callback = click(pending)
+          Instagram::AmhConfirmation.call(event: callback)
+          expect(pending.reload.confirmation_event_id).to eq(callback.id)
+        end
+        { status: 200, body: '{"id":"public-qa"}', headers: { 'Content-Type' => 'application/json' } }
+      end
+      row = run_graph.reload
+      expect(callback).not_to be_nil
+      expect(row.state).to eq('accepted')
+      expect(row.execution_trace).to include(hash_including('node' => 'confirmation', 'port' => 'confirmed'))
+      Instagram::AmhConfirmation.call(event: callback)
+      expect(messages).to have_been_requested.twice
+      expect(Instagram::AmhShortLink.count).to eq(1)
+    end
+  end
+
+  it 'does not release material when an early click is followed by an uncertain invitation receipt' do
+    messages = stub_request(:post, 'https://graph.instagram.com/v23.0/90001/messages').to_return do
+      pending = Instagram::AmhDelivery.find_by!(inbound_event_id: event.id)
+      Instagram::AmhConfirmation.call(event: click(pending))
+      { status: 503, body: '{}' }
+    end
+    row = run_graph.reload
+    expect(row.confirmation_event_id).not_to be_nil
+    expect(row.state).to eq('uncertain')
+    expect(row.graph_cursor).to be_nil
+    expect(Instagram::AmhShortLink.count).to eq(0)
+    expect(messages).to have_been_requested.once
+  end
+
   it 'stops uncertain invitations and never repeats a reserved request' do
     request = stub_request(:post, 'https://graph.instagram.com/v23.0/90001/messages').to_timeout
     row = run_graph.reload

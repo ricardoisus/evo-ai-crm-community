@@ -5,7 +5,7 @@ class Instagram::AmhConfirmation
   class NotReady < StandardError; end
   Unavailable = Instagram::AmhExecutor::Unavailable
 
-  def self.validate!(event, delivery)
+  def self.validate!(event, delivery, allow_pending_prompt: false)
     raise Unavailable unless Instagram::AmhExecutor.enabled?
 
     inbox = Instagram::AmhConnection.bound_inbox!
@@ -20,8 +20,7 @@ class Instagram::AmhConfirmation
     raise Unavailable unless clicked['identity'] == original['identity']
     raise Unavailable if proof.audience == 'test' && !Instagram::AmhExecutor.test_identity?(clicked)
 
-    raise NotReady if delivery.prompt_state == 'sending'
-    raise Unavailable unless delivery.prompt_state == 'accepted' && delivery.prompt_expires_at && delivery.prompt_expires_at > Time.current
+    validate_prompt!(delivery, allow_pending_prompt)
 
     clicked_at = Time.iso8601(clicked.fetch('occurred_at'))
     raise Unavailable unless clicked_at > 24.hours.ago && clicked_at <= Time.current && clicked_at >= delivery.created_at - 5.seconds
@@ -48,6 +47,15 @@ class Instagram::AmhConfirmation
     [inbox, version, data, source, clicked_at]
   rescue ArgumentError, KeyError, Instagram::AmhShortLink::Unavailable, Instagram::AmhShortLink::Conflict
     raise Unavailable
+  end
+
+  def self.validate_prompt!(delivery, allow_pending)
+    pending = delivery.prompt_state == 'sending'
+    raise NotReady if pending && !allow_pending
+    return if pending && allow_pending
+
+    accepted = delivery.prompt_state == 'accepted'
+    raise Unavailable unless accepted && delivery.prompt_expires_at && delivery.prompt_expires_at > Time.current
   end
 
   def self.call(event:)
