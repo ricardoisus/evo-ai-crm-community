@@ -25,6 +25,8 @@ class Instagram::AmhShortLink < ApplicationRecord
     raise Unavailable unless version
 
     graph = Instagram::AmhVisualEngine.validate!(version.fetch('graph'))
+    raise Unavailable if Instagram::AmhGraph.v2?(graph)
+
     data = graph['nodes'].to_h { |node| [node['id'], node['data']] }
     validate_event!(event, data)
     raise Unavailable if data['material']['mode'] == 'context'
@@ -47,6 +49,8 @@ class Instagram::AmhShortLink < ApplicationRecord
   end
 
   def self.conflicting_version?(version, event)
+    return Instagram::AmhGraph.prelude(version['graph'], event).present? if Instagram::AmhGraph.v2?(version['graph'])
+
     data = version.fetch('graph').fetch('nodes').to_h { |n| [n['id'], n['data']] }
     return false unless candidate_scope?(data.fetch('scope'), event)
 

@@ -2,14 +2,15 @@
 
 class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
   require_permissions({ operations: 'journeys.read', index: 'journeys.read', show: 'journeys.read', create: 'journeys.create',
-                        update: 'journeys.update', publish: 'journeys.toggle_active', simulate: 'journeys.update',
+                        update: 'journeys.update', discard: 'journeys.update', validate_graph: 'journeys.update', publish: 'journeys.toggle_active', simulate: 'journeys.update',
                         catalog: 'journeys.read', test_events: 'journeys.read', deliveries: 'journeys.read',
                         activate: 'journeys.toggle_active', test_reply: 'journeys.toggle_active' })
   before_action :fetch_proof, except: %i[index create operations catalog test_events]
   rescue_from Instagram::AmhVisualEngine::Invalid, with: :invalid_graph
   rescue_from ActiveRecord::StaleObjectError, with: :stale
 
-  rescue_from Instagram::AmhCatalog::Unavailable, Instagram::AmhExecutor::Unavailable, Instagram::AmhConnection::ConfigurationError, with: :unavailable
+  rescue_from Instagram::AmhCatalog::Unavailable, Instagram::AmhExecutor::Unavailable, Instagram::AmhConnection::ConfigurationError,
+              with: :unavailable
 
   def catalog
     response.headers['Cache-Control'] = 'no-store'
@@ -20,7 +21,7 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
     response.headers['Cache-Control'] = 'no-store'
     inbox = Instagram::AmhConnection.bound_inbox!
     events = Instagram::AmhInboundEvent.where(inbox_id: inbox.id).where('created_at > ?', 7.days.ago)
-                                     .order(created_at: :desc).limit(100).filter_map do |event|
+                                       .order(created_at: :desc).limit(100).filter_map do |event|
       contract = event.contract
       next unless contract['kind'] == 'comment' && Instagram::AmhExecutor.test_identity?(contract)
 
@@ -46,23 +47,31 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
       version = @proof.versions.find { |v| v['id'] == params[:version_id] }
       unless audience == 'paused'
         raise Instagram::AmhExecutor::Unavailable unless Instagram::AmhExecutor.enabled? && version
+
         Instagram::AmhVisualEngine.validate!(version['graph'])
-        reply = version['graph']['nodes'].find { |n| n['id'] == 'reply' }['data']
-        unless reply['confirmationRequired'] == true
-          raise Instagram::AmhVisualEngine::Invalid, 'Publique uma versão com confirmação antes da entrega'
-        end
-        scope = version['graph']['nodes'].find { |n| n['id'] == 'scope' }['data']
-        raise Instagram::AmhExecutor::Unavailable unless Instagram::AmhConnection.managed_account?(scope['account'])
-        unless %w[media ad].all? { |key| scope[key].blank? || /\A[0-9]{1,64}\z/.match?(scope[key]) }
-          raise Instagram::AmhVisualEngine::Invalid, 'Use o ID numérico da publicação ou anúncio'
-        end
-        # A successful controlled provider receipt is required for the selected version.
-        if audience == 'active' && !Instagram::AmhDelivery.where(proof_id: @proof.id, version_id: version['id'], state: 'accepted').where.not(confirmation_event_id: nil).exists?
-          raise Instagram::AmhVisualEngine::Invalid, 'Conclua o teste real desta versão antes de ativar'
-        end
-        if audience == 'active' && reply['publicReplyEnabled'] == true &&
-           !Instagram::AmhDelivery.where(proof_id: @proof.id, version_id: version['id'], state: 'accepted', public_reply_state: 'accepted').exists?
-          raise Instagram::AmhVisualEngine::Invalid, 'Conclua também o teste da resposta pública desta versão antes de ativar'
+        if Instagram::AmhGraph.v2?(version['graph'])
+          validate_v2_activation!(version, audience)
+        else
+          reply = version['graph']['nodes'].find { |n| n['id'] == 'reply' }['data']
+          unless reply['confirmationRequired'] == true
+            raise Instagram::AmhVisualEngine::Invalid,
+                  'Publique uma versão com confirmação antes da entrega'
+          end
+
+          scope = version['graph']['nodes'].find { |n| n['id'] == 'scope' }['data']
+          raise Instagram::AmhExecutor::Unavailable unless Instagram::AmhConnection.managed_account?(scope['account'])
+          unless %w[media ad].all? { |key| scope[key].blank? || /\A[0-9]{1,64}\z/.match?(scope[key]) }
+            raise Instagram::AmhVisualEngine::Invalid, 'Use o ID numérico da publicação ou anúncio'
+          end
+          # A successful controlled provider receipt is required for the selected version.
+          if audience == 'active' && !Instagram::AmhDelivery.where(proof_id: @proof.id, version_id: version['id'],
+                                                                   state: 'accepted').where.not(confirmation_event_id: nil).exists?
+            raise Instagram::AmhVisualEngine::Invalid, 'Conclua o teste real desta versão antes de ativar'
+          end
+          if audience == 'active' && reply['publicReplyEnabled'] == true &&
+             !Instagram::AmhDelivery.where(proof_id: @proof.id, version_id: version['id'], state: 'accepted', public_reply_state: 'accepted').exists?
+            raise Instagram::AmhVisualEngine::Invalid, 'Conclua também o teste da resposta pública desta versão antes de ativar'
+          end
         end
         if audience == 'test' && ENV.fetch('INSTAGRAM_AMH_TEST_IGSIDS', '').split(',').reject(&:blank?).empty?
           raise Instagram::AmhExecutor::Unavailable
@@ -98,7 +107,7 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
 
   def create
     graph = graph_params
-    Instagram::AmhVisualEngine.validate!(graph)
+    Instagram::AmhGraph.v2?(graph) ? Instagram::AmhGraph.validate_draft!(graph) : Instagram::AmhVisualEngine.validate!(graph)
     key = params.require(:create_key).to_s
     raise Instagram::AmhVisualEngine::Invalid, 'Chave de criação inválida' unless /\A[0-9a-f-]{36}\z/i.match?(key)
 
@@ -111,7 +120,7 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
 
   def update
     graph = graph_params
-    Instagram::AmhVisualEngine.validate!(graph)
+    Instagram::AmhGraph.v2?(graph) ? Instagram::AmhGraph.validate_draft!(graph) : Instagram::AmhVisualEngine.validate!(graph)
     @proof.update!(draft: graph, name: params[:name].presence || @proof.name, lock_version: expected_lock_version)
     success_response(data: @proof.snapshot)
   end
@@ -122,12 +131,45 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
     success_response(data: @proof.snapshot)
   end
 
+  def discard
+    @proof.discard_draft!(expected_lock_version)
+    success_response(data: @proof.snapshot)
+  end
+
+  def validate_graph
+    Instagram::AmhVisualEngine.validate!(@proof.draft)
+    success_response(data: { valid: true, issues: [] })
+  end
+
   def simulate
-    @run = @proof.simulate_version!(params[:version_id], params.require(:fixture), params[:text])
+    @run = @proof.simulate_version!(params[:version_id], params.require(:fixture), params[:text], simulation_context)
     success_response(data: { proof: @proof.snapshot, run: @run })
   end
 
   private
+
+  def simulation_context
+    input = params[:context]
+    return {} unless input.is_a?(ActionController::Parameters)
+
+    result = input.permit(:account, :media, :ad, :caption).to_h
+    raise Instagram::AmhVisualEngine::Invalid, 'Contexto de simulação inválido' unless result.values.all? { |v| v.is_a?(String) && v.length <= 2200 }
+
+    result
+  end
+
+  def validate_v2_activation!(version, audience)
+    unless @proof.versions.last['id'] == version['id'] && Instagram::AmhGraph.v2?(@proof.draft) && Instagram::AmhGraph.digest(@proof.draft) == Instagram::AmhGraph.digest(version['graph'])
+      raise Instagram::AmhVisualEngine::Invalid, 'Publique o rascunho atual antes de testar ou ativar'
+    end
+
+    version['graph']['nodes'].select { |n| n['type'] == 'scope' }.each do |node|
+      raise Instagram::AmhExecutor::Unavailable unless Instagram::AmhConnection.managed_account?(node['data']['account'])
+    end
+    return unless audience == 'active' && !@proof.activation_readiness(version)['eligible']
+
+    raise Instagram::AmhVisualEngine::Invalid, 'Conclua o teste real desta configuração antes de ativar'
+  end
 
   def publication_actor
     return Current.user.id.to_s if Current.user
@@ -155,11 +197,13 @@ class Api::V1::InstagramAmhProofsController < Api::V1::BaseController
   end
 
   def unavailable
-    error_response(ApiErrorCodes::VALIDATION_ERROR, 'Recurso indisponível: confira conexão, liberação de envio, publicação e perfil de teste.', status: :unprocessable_entity)
+    error_response(ApiErrorCodes::VALIDATION_ERROR, 'Recurso indisponível: confira conexão, liberação de envio, publicação e perfil de teste.',
+                   status: :unprocessable_entity)
   end
 
   def invalid_graph(error)
-    error_response(ApiErrorCodes::VALIDATION_ERROR, error.message, status: :unprocessable_entity)
+    error_response(ApiErrorCodes::VALIDATION_ERROR, error.message, details: error.respond_to?(:issues) ? error.issues : [],
+                                                                   status: :unprocessable_entity)
   end
 
   def stale

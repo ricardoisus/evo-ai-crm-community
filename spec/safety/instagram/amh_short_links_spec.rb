@@ -1,8 +1,10 @@
 ENV['RAILS_ENV'] = 'test'
 require_relative '../../../config/environment'
 require 'webmock/rspec'
+require 'active_support/testing/time_helpers'
 
 RSpec.describe 'AMH short links' do
+  include ActiveSupport::Testing::TimeHelpers
   let(:graph) { JSON.parse(File.read(Rails.root.join('spec/fixtures/amh_visual_graph.json'))) }
   let(:proof) do
     p = Instagram::AmhVisualProof.create!(name: 'QA links', draft: graph, create_key: SecureRandom.uuid)
@@ -204,21 +206,23 @@ RSpec.describe 'AMH short links' do
   end
 
   it 'requires a fresh signed request, rejects replay and rate limits using shared Redis' do
-    code = issue[:url].split('/').last
-    nonce = SecureRandom.hex(16)
-    resolve_request(code, nonce: nonce)
-    expect(client.response.status).to eq(200)
-    expect(client.response.headers['Cache-Control']).to include('no-store')
-    resolve_request(code, nonce: nonce)
-    expect(client.response.status).to eq(401)
-    resolve_request(code, signed: false)
-    expect(client.response.status).to eq(401)
-    resolve_request(code, timestamp: 2.minutes.ago.to_i.to_s)
-    expect(client.response.status).to eq(401)
-    29.times { resolve_request(code) }
-    expect(client.response.status).to eq(200)
-    resolve_request(code)
-    expect(client.response.status).to eq(429)
+    freeze_time do
+      code = issue[:url].split('/').last
+      nonce = SecureRandom.hex(16)
+      resolve_request(code, nonce: nonce)
+      expect(client.response.status).to eq(200)
+      expect(client.response.headers['Cache-Control']).to include('no-store')
+      resolve_request(code, nonce: nonce)
+      expect(client.response.status).to eq(401)
+      resolve_request(code, signed: false)
+      expect(client.response.status).to eq(401)
+      resolve_request(code, timestamp: 2.minutes.ago.to_i.to_s)
+      expect(client.response.status).to eq(401)
+      29.times { resolve_request(code) }
+      expect(client.response.status).to eq(200)
+      resolve_request(code)
+      expect(client.response.status).to eq(429)
+    end
   end
 
   it 'returns the same generic response for missing, expired and revoked codes' do

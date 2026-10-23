@@ -5,7 +5,7 @@ class Instagram::AmhConfirmation
   class NotReady < StandardError; end
   Unavailable = Instagram::AmhExecutor::Unavailable
 
-  def self.validate!(event, delivery)
+  def self.validate!(event, delivery, allow_pending_prompt: false)
     raise Unavailable unless Instagram::AmhExecutor.enabled?
 
     inbox = Instagram::AmhConnection.bound_inbox!
@@ -20,8 +20,7 @@ class Instagram::AmhConfirmation
     raise Unavailable unless clicked['identity'] == original['identity']
     raise Unavailable if proof.audience == 'test' && !Instagram::AmhExecutor.test_identity?(clicked)
 
-    raise NotReady if delivery.prompt_state == 'sending'
-    raise Unavailable unless delivery.prompt_state == 'accepted' && delivery.prompt_expires_at && delivery.prompt_expires_at > Time.current
+    validate_prompt!(delivery, allow_pending_prompt)
 
     clicked_at = Time.iso8601(clicked.fetch('occurred_at'))
     raise Unavailable unless clicked_at > 24.hours.ago && clicked_at <= Time.current && clicked_at >= delivery.created_at - 5.seconds
@@ -30,13 +29,17 @@ class Instagram::AmhConfirmation
     raise Unavailable unless version
 
     graph = Instagram::AmhVisualEngine.validate!(version.fetch('graph'))
-    data = graph['nodes'].to_h { |node| [node['id'], node['data']] }
+    data = if Instagram::AmhGraph.v2?(graph)
+             Instagram::AmhGraph.runtime_data(graph, Instagram::AmhExecutor.event_data(original, delivery.inbound_event))
+           else
+             graph['nodes'].to_h { |node| [node['id'], node['data']] }
+           end
     raise Unavailable unless data['reply']['confirmationRequired'] == true
 
     source = Instagram::AmhExecutor.event_data(original, delivery.inbound_event)
     Instagram::AmhShortLink.validate_event!(source, data)
     data = data.deep_dup
-    if data['material']['mode'] == 'context'
+    if Instagram::AmhGraph.v2?(graph) || data['material']['mode'] == 'context'
       raise Unavailable unless Instagram::AmhVisualEngine::MATERIALS.include?(delivery.resolved_material)
 
       data['material']['material'] = delivery.resolved_material
@@ -46,9 +49,22 @@ class Instagram::AmhConfirmation
     raise Unavailable
   end
 
+  def self.validate_prompt!(delivery, allow_pending)
+    pending = delivery.prompt_state == 'sending'
+    raise NotReady if pending && !allow_pending
+    return if pending && allow_pending
+
+    accepted = delivery.prompt_state == 'accepted'
+    raise Unavailable unless accepted && delivery.prompt_expires_at && delivery.prompt_expires_at > Time.current
+  end
+
   def self.call(event:)
     id = Instagram::AmhConfirmationToken.read(event.contract['amh_confirmation'])
     raise Unavailable unless id
+
+    candidate = Instagram::AmhDelivery.find_by(id: id)
+    version = candidate&.proof&.versions&.find { |v| v['id'] == candidate.version_id }
+    return Instagram::AmhGraphExecutor.confirm(event: event, delivery: candidate) if version && Instagram::AmhGraph.v2?(version['graph'])
 
     row, inbox, data, link = Instagram::AmhVisualProof.with_mapping_lock do
       delivery = Instagram::AmhDelivery.find_by(id: id)
