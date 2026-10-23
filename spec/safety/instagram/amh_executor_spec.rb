@@ -55,6 +55,40 @@ RSpec.describe Instagram::AmhExecutor do
       encrypted_contract: Instagram::AmhInboundEvent.encryptor.encrypt_and_sign(click))
   end
 
+  def attest_graph_comment(value)
+    digest = Digest::SHA256.hexdigest(JSON.generate(value))
+    value.merge('graph_verification' => Rails.application.message_verifier('instagram-amh-graph-comment-v1')
+      .generate(digest, purpose: 'historical_comment', expires_in: 1.hour))
+  end
+
+  it 'executes an attested historical Graph comment once and requires the real confirmation' do
+    proof.update!(audience: 'active', activated_at: 6.days.ago)
+    imported = attest_graph_comment(contract.merge('time_source' => 'graph_comment_api', 'occurred_at' => 3.days.ago.iso8601))
+    event.update!(encrypted_contract: Instagram::AmhInboundEvent.encryptor.encrypt_and_sign(imported))
+    request = stub_request(:post, /graph.instagram.com/)
+      .to_return(status: 200, body: '{"message_id":"qa-history"}', headers: { 'Content-Type' => 'application/json' })
+    row = described_class.call(event: event, proof: proof)
+    expect(row.state).to eq('awaiting_confirmation')
+    expect(Instagram::AmhShortLink.count).to eq(0)
+    expect(described_class.call(event: event, proof: proof).id).to eq(row.id)
+    expect(request).to have_been_requested.once
+    expect(Instagram::AmhConfirmation.call(event: confirm(row)).state).to eq('accepted')
+    expect(request).to have_been_requested.twice
+  end
+
+  it 'rejects unsigned or changed Graph evidence and retains the age and activation cutoffs' do
+    proof.update!(audience: 'active', activated_at: 6.days.ago)
+    imported = contract.merge('time_source' => 'graph_comment_api')
+    cases = [imported, attest_graph_comment(imported).merge('occurred_at' => 1.minute.ago.iso8601),
+             attest_graph_comment(imported.merge('occurred_at' => 8.days.ago.iso8601)),
+             attest_graph_comment(imported.merge('occurred_at' => 7.days.ago.iso8601))]
+    cases.each do |value|
+      event.update!(encrypted_contract: Instagram::AmhInboundEvent.encryptor.encrypt_and_sign(value))
+      expect { described_class.call(event: event, proof: proof) }.to raise_error(described_class::Unavailable)
+    end
+    expect(Instagram::AmhDelivery.count).to eq(0)
+  end
+
   it 'renders the first name in the actual invitation and never fetches or sends twice' do
     proof
     reply = graph['nodes'].find { |node| node['id'] == 'reply' }['data']
