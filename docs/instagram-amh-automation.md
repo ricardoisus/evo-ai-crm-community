@@ -177,3 +177,23 @@ errors produce `Oi!` in the standard greeting. No profile is fetched for legacy
 invitations without the token. Profile availability before the first private
 reply must be validated with a controlled real comment; mocked acceptance does
 not establish that Meta will expose the name. Existing versions remain immutable.
+
+## Authorized historical Graph imports
+
+A one-off admin import may use `time_source=graph_comment_api` with `graph_verification`:
+SHA256 of JSON of the complete contract excluding that field, signed with the app
+message verifier `instagram-amh-graph-comment-v1`, purpose `historical_comment` and
+an expiry. Only attest after authenticated account-bound Graph reads establish
+comment ID, actual creation timestamp, text, media and Instagram Login author ID.
+Never manufacture a webhook or use Facebook author IDs without resolving them.
+Ingress does not accept this source from external input. Modified/unsigned or
+expired attestations are rejected. Seven-day age, activation cutoff, account/app,
+material/keyword, immutable version, pause, reservation and confirmation checks
+remain unchanged. The existing encrypted event-key deduplication must be used;
+existing delivery rows are terminal and must not be deleted or retried.
+
+Import is not automatic on activation. It requires an explicit historical-operation
+authorization and an audited cutoff on the rule. Preserve the real activation
+receipt separately when moving its cutoff. Imported events use the same executor,
+public reply, like and identity-bound confirmation as new comments. Record private
+IDs/Graph evidence outside Git and sanitized counts in the operation record.

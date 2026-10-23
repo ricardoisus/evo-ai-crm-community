@@ -27,7 +27,7 @@ class Instagram::AmhExecutor
     contract = event.contract
     raise Unavailable unless contract['kind'] == 'comment' && contract.dig('identity', 'app_id') == Instagram::AmhConnection.app_id
     raise Unavailable unless contract.dig('identity', 'professional_account_id') == inbox.channel.instagram_id
-    raise Unavailable if contract['live'] == true || contract['time_source'] != 'webhook_entry'
+    raise Unavailable if contract['live'] == true || !verified_timestamp_source?(contract)
     raise Unavailable unless proof.active_version_id && %w[test active].include?(proof.audience)
     raise Unavailable if (explicit_test || proof.audience == 'test') && !test_identity?(contract)
 
@@ -56,6 +56,20 @@ class Instagram::AmhExecutor
     [inbox, version, data, payload]
   rescue ArgumentError, KeyError, Instagram::AmhShortLink::Unavailable, Instagram::AmhShortLink::Conflict
     raise Unavailable
+  end
+
+  # Historical Graph reads are admitted only with an application attestation.
+  # Ingress cannot accept this source or attestation from an external webhook.
+  def self.verified_timestamp_source?(contract)
+    return true if contract['time_source'] == 'webhook_entry'
+    return false unless contract['time_source'] == 'graph_comment_api'
+
+    digest = Digest::SHA256.hexdigest(JSON.generate(contract.except('graph_verification')))
+    verified = Rails.application.message_verifier('instagram-amh-graph-comment-v1')
+                    .verified(contract['graph_verification'], purpose: 'historical_comment')
+    verified == digest
+  rescue ArgumentError, ActiveSupport::MessageVerifier::InvalidSignature
+    false
   end
 
   def self.call(event:, proof:, explicit_test: false)
