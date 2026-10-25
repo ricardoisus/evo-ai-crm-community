@@ -99,7 +99,7 @@ RSpec.describe Instagram::AmhExecutor do
     profile = stub_request(:get, 'https://graph.instagram.com/v23.0/90002?fields=name')
       .to_return(status: 200, body: '{"name":"joNas silva"}', headers: { 'Content-Type' => 'application/json' })
     prompt = stub_request(:post, "https://graph.instagram.com/v23.0/#{target}/messages")
-      .with { |request| JSON.parse(request.body).dig('message', 'text') == 'Oi, Jonas! Posso enviar o acesso por aqui?' }
+      .with { |request| JSON.parse(request.body).dig('message', 'attachment', 'payload', 'text') == 'Oi, Jonas! Posso enviar o acesso por aqui?' }
       .to_return(status: 200, body: '{"message_id":"qa-name"}', headers: { 'Content-Type' => 'application/json' })
     expect(call.prompt_state).to eq('accepted')
     expect(call.prompt_state).to eq('accepted')
@@ -117,11 +117,17 @@ RSpec.describe Instagram::AmhExecutor do
     expect(first.encrypted_prompt_receipt).not_to include('qa-message')
     expect(Instagram::AmhShortLink.count).to eq(0)
     expect(bodies.first.dig('recipient', 'comment_id')).to eq(contract['event_id'])
-    expect(bodies.first.dig('message', 'quick_replies', 0, 'title')).to eq('Pode enviar')
+    prompt = bodies.first.dig('message', 'attachment', 'payload')
+    expect(prompt['template_type']).to eq('button')
+    expect(prompt['text']).to eq('Posso enviar o material?')
+    expect(prompt['buttons'].size).to eq(1)
+    expect(prompt['buttons'].first.slice('type', 'title')).to eq('type' => 'postback', 'title' => 'Pode enviar')
+    expect(Instagram::AmhConfirmationToken.read(prompt['buttons'].first['payload'])).to eq(first.id)
+    expect(bodies.first['message']).not_to have_key('quick_replies')
     expect(bodies.first.to_s).not_to include('https://co.agenciavetorial.com')
     expect(call.id).to eq(first.id)
     expect(request).to have_been_requested.once
-    click = confirm(first)
+    click = confirm(first, token: prompt['buttons'].first['payload'], source: 'postback')
     accepted = Instagram::AmhConfirmation.call(event: click)
     expect(accepted.state).to eq('accepted')
     expect(accepted.confirmation_event_id).to eq(click.id)
