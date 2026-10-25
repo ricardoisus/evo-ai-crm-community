@@ -6,14 +6,15 @@ class Instagram::AmhPrivateReply
   # First private reply contains only the invitation. No material URL or link.
   def self.prompt(channel:, comment_id:, text:, payload:)
     request(channel: channel, recipient: { comment_id: comment_id },
-            message: { text: text, quick_replies: [{ content_type: 'text', title: 'Pode enviar', payload: payload }] })
+            message: { attachment: { type: 'template', payload: { template_type: 'button', text: text,
+                                                                  buttons: [{ type: 'postback', title: 'Pode enviar', payload: payload }] } } })
   end
 
   # Called only after a signed, identity-bound quick reply/postback is persisted.
   def self.deliver(channel:, recipient_id:, text:, url:, label:)
     request(channel: channel, recipient: { id: recipient_id }, message: {
               attachment: { type: 'template', payload: { template_type: 'button', text: text,
-                                                        buttons: [{ type: 'web_url', url: url, title: label }] } }
+                                                         buttons: [{ type: 'web_url', url: url, title: label }] } }
             })
   end
 

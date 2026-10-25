@@ -94,7 +94,7 @@ RSpec.describe 'Instagram v2 graph transport and persistence' do
     Instagram::AmhExecutor.call(event: event, proof: proof, explicit_test: true)
   end
   def click(row)
-    c = { 'kind' => 'dm', 'identity' => contract['identity'], 'event_id' => SecureRandom.uuid, 'occurred_at' => Time.current.iso8601(6), 'confirmation_source' => 'quick_reply', 'amh_confirmation' => Instagram::AmhConfirmationToken.issue(row) }
+    c = { 'kind' => 'dm', 'identity' => contract['identity'], 'event_id' => SecureRandom.uuid, 'occurred_at' => Time.current.iso8601(6), 'confirmation_source' => 'postback', 'amh_confirmation' => Instagram::AmhConfirmationToken.issue(row) }
     Instagram::AmhInboundEvent.create!(inbox_id: reserved, event_key: SecureRandom.hex(32), encrypted_contract: Instagram::AmhInboundEvent.encryptor.encrypt_and_sign(c))
   end
   it 'follows the drawn path, continues after public failure/like block, waits for a real click and deduplicates' do
@@ -123,7 +123,7 @@ RSpec.describe 'Instagram v2 graph transport and persistence' do
       callback = nil
       messages = stub_request(:post, 'https://graph.instagram.com/v23.0/90001/messages').to_return do |request|
         body = JSON.parse(request.body)
-        if phase == 'invitation' && body.dig('message', 'quick_replies')
+        if phase == 'invitation' && body.dig('message', 'attachment', 'payload', 'buttons', 0, 'type') == 'postback'
           pending = Instagram::AmhDelivery.find_by!(inbound_event_id: event.id)
           expect(pending.prompt_state).to eq('sending')
           callback = click(pending)

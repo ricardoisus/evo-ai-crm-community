@@ -33,7 +33,7 @@ Private replies contract: [Meta documentation](https://developers.facebook.com/d
 
 ## Confirmation required, 20 October product correction
 
-Current execution requires `reply.confirmationRequired=true`. The first reply is only `openingText` plus the `Pode enviar` quick reply. It carries a purpose-bound, seven-day signed delivery token and no material URL. A comment cannot issue a short link. Historical direct-response graphs remain readable/simulatable but cannot be activated or dispatched.
+Current execution requires `reply.confirmationRequired=true`. The first reply is a text button template containing `openingText` and one `Pode enviar` postback button. It is addressed to `recipient.comment_id`; no image or generic card is sent. Existing quick-reply invitations remain compatible with the receiver. It carries a purpose-bound, seven-day signed delivery token and no material URL. A comment cannot issue a short link. Historical direct-response graphs remain readable/simulatable but cannot be activated or dispatched.
 
 The signed Meta receiver persists only the allowlisted quick-reply/postback payload, not the DM body. Plain text matching the button title is insufficient. The same identity/account/app/inbox, immutable version, active audience, operational gates, prompt receipt/expiry and a fresh inbound 24-hour window are checked again before delivery. A callback that arrives before the prompt receipt is saved has a bounded, pre-send retry. The link is issued only when the confirmed delivery is reserved durably. The material uses a button template with one `web_url`, `buttonLabel` and URL-free text, preventing a repeated raw link in the message.
 
