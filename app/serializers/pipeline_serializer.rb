@@ -22,7 +22,7 @@ module PipelineSerializer
   def serialize(pipeline, include_stages: false, include_items: false,
                 include_tasks_info: false, include_services_info: false,
                 include_labels: false, labels_by_title: nil, labels_by_id: nil,
-                task_counts_by_item: nil)
+                task_counts_by_item: nil, include_card_definitions: true)
     result = {
       id: pipeline.id,
       name: pipeline.name,
@@ -34,7 +34,6 @@ module PipelineSerializer
       is_default: pipeline.is_default,
       card_configuration: pipeline.card_configuration,
       card_configuration_revision: pipeline.card_configuration_revision,
-      card_field_definitions: Pipelines::CardConfiguration.definitions(pipeline),
       custom_fields: pipeline.custom_fields || {},
       item_count: pipeline.item_count,
       deal_count: pipeline.item_count,
@@ -42,6 +41,8 @@ module PipelineSerializer
       created_at: pipeline.created_at&.iso8601,
       updated_at: pipeline.updated_at&.iso8601
     }
+
+    result[:card_field_definitions] = Pipelines::CardConfiguration.definitions(pipeline) if include_card_definitions
 
     # Include stages if loaded
     if include_stages && pipeline.association(:pipeline_stages).loaded?
@@ -128,6 +129,6 @@ module PipelineSerializer
   def serialize_collection(pipelines, **options)
     return [] unless pipelines
 
-    pipelines.map { |pipeline| serialize(pipeline, **options) }
+    pipelines.map { |pipeline| serialize(pipeline, include_card_definitions: false, **options) }
   end
 end

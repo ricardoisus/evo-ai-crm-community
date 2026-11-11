@@ -34,6 +34,36 @@ RSpec.describe 'Pipeline card configuration', type: :request do
     expect(data['card_field_definitions'].map { |f| f['id'] }).to include('title', 'next_task')
   end
 
+  it 'rejects a mixed configuration and pipeline update without changing either' do
+    name = pipeline.name
+    patch "/api/v1/pipelines/#{pipeline.id}", params: { pipeline: {
+      name: 'Renamed', card_configuration: configuration, card_configuration_revision: 0
+    } }, as: :json
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(pipeline.reload.name).to eq(name)
+    expect(pipeline.card_configuration).to eq({})
+    expect(pipeline.card_configuration_revision).to eq(0)
+  end
+
+  it 'limits installation-wide definitions to contact and deal models' do
+    %i[contact_attribute pipeline_item_attribute conversation_attribute company_attribute].each do |model|
+      CustomAttributeDefinition.create!(attribute_key: "cards_#{model}", attribute_display_name: model.to_s,
+                                        attribute_model: model, attribute_display_type: :text)
+    end
+    get "/api/v1/pipelines/#{pipeline.id}", as: :json
+    ids = response.parsed_body.dig('data', 'card_field_definitions').pluck('id')
+    expect(ids).to include('contact_attribute:cards_contact_attribute', 'deal_attribute:cards_pipeline_item_attribute')
+    expect(ids.join(' ')).not_to include('cards_conversation_attribute', 'cards_company_attribute')
+  end
+
+  it 'omits the unused field catalog from pipeline collections' do
+    pipeline
+    expect(Pipelines::CardConfiguration).not_to receive(:definitions)
+    get '/api/v1/pipelines', as: :json
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['data'].map(&:keys).flatten).not_to include('card_field_definitions')
+  end
+
   it 'persists independently per pipeline without changing custom fields' do
     other = Pipeline.create!(name: "Other #{SecureRandom.hex(4)}", created_by: user)
     fields = pipeline.custom_fields.deep_dup
@@ -110,6 +140,9 @@ RSpec.describe 'Pipeline card configuration', type: :request do
     expect(response).to have_http_status(:ok)
     items = response.parsed_body.dig('data', 'stages', 0, 'items')
     expect(items.size).to eq(6)
+    expect(items.pluck('channel_origin')).to all(eq('channel' => nil, 'origin' => nil, 'conversation_id' => nil))
+    expect(items.pluck('last_activity')).to all(be_nil)
+    expect(items.pluck('latest_message')).to all(be_nil)
     expect(items.pluck('next_task').pluck('title')).to all(start_with('Retornar'))
     # One preload plus the three existing aggregate queries, independent of card count.
     expect(queries.size).to be <= 4

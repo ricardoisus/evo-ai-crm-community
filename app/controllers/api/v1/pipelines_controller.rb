@@ -238,6 +238,9 @@ class Api::V1::PipelinesController < Api::V1::BaseController
 
   def update_card_configuration
     payload = params.require(:pipeline)
+    unless (payload.keys - %w[card_configuration card_configuration_revision]).empty?
+      return error_response(ApiErrorCodes::VALIDATION_ERROR, 'Envie a configuração dos cartões separadamente', status: :unprocessable_entity)
+    end
     configuration = payload[:card_configuration]
     configuration = configuration.to_unsafe_h if configuration.respond_to?(:to_unsafe_h)
     @pipeline.with_lock do

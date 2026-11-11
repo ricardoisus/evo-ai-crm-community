@@ -15,6 +15,9 @@ module Pipelines
 
     def definitions(pipeline)
       native = NATIVE.map { |id, label| { id: id, label: label, type: 'text', source: 'native' } }
+      # This community fork stores one account per database (RuntimeConfig.account).
+      # Definitions have no account_id; the catalog uses the same installation scope
+      # as CustomAttributeDefinitionsController, limited to card-compatible models.
       custom = CustomAttributeDefinition.where(attribute_model: %i[contact_attribute pipeline_item_attribute]).map do |definition|
         source = definition.contact_attribute? ? 'contact_attribute' : 'deal_attribute'
         { id: "#{source}:#{definition.attribute_key}", label: definition.attribute_display_name,
