@@ -141,7 +141,7 @@ module PipelineItemSerializer
       result[:primary_contact]['avatar_url'] = pipeline_item.primary_contact.avatar_url.presence
     end
 
-    conversations = pipeline_item.conversations.to_a
+    conversations = (pipeline_item.conversations.to_a + [pipeline_item.conversation].compact).uniq(&:id)
     latest_message = conversations.filter_map do |conversation|
       messages = conversation.association(:messages).loaded? ? conversation.messages : conversation.messages.chat
       messages.reject { |message| message.message_type == 'activity' || message.private? }.max_by(&:created_at)
@@ -154,6 +154,23 @@ module PipelineItemSerializer
         created_at: latest_message.created_at.iso8601,
         conversation_id: latest_message.conversation_id
       }
+    end
+
+    recent = conversations.max_by { |conversation| conversation.last_activity_at || conversation.updated_at }
+    result[:channel_origin] = {
+      channel: recent&.inbox&.name,
+      origin: pipeline_item.custom_fields&.dig('origin'),
+      conversation_id: recent&.id
+    }
+    result[:last_activity] = recent && {
+      occurred_at: recent.last_activity_at&.iso8601,
+      summary: 'Atividade na conversa', conversation_id: recent.id
+    }
+    result[:next_task] = nil
+    if pipeline_item.association(:tasks).loaded?
+      task = pipeline_item.tasks.reject { |entry| entry.status_completed? || entry.status_cancelled? }
+                          .min_by { |entry| entry.due_date || Time.utc(9999) }
+      result[:next_task] = task && { id: task.id, title: task.title, due_at: task.due_date&.iso8601, status: task.status }
     end
 
     # Include tasks info if requested. When a pre-computed batch index is passed

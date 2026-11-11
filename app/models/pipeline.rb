@@ -33,6 +33,14 @@ class Pipeline < ApplicationRecord
   has_many :conversations, through: :pipeline_items
   has_many :pipeline_service_definitions, dependent: :nullify
 
+  validate :validate_card_configuration
+
+  def validate_card_configuration
+    return if card_configuration == {}
+
+    errors.add(:card_configuration, "Configuração inválida") unless Pipelines::CardConfiguration.valid?(self, card_configuration)
+  end
+
   validates :name, presence: true, uniqueness: true
   validates :pipeline_type, inclusion: { in: VALID_TYPES }
 
