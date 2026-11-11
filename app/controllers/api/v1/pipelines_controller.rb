@@ -92,6 +92,10 @@ class Api::V1::PipelinesController < Api::V1::BaseController
   end
 
   def update
+    authorize @pipeline, :update?
+    if params[:pipeline]&.key?(:card_configuration)
+      return update_card_configuration
+    end
     if @pipeline.update(pipeline_params)
       success_response(
         data: PipelineSerializer.serialize(@pipeline, include_stages: true),
@@ -232,6 +236,24 @@ class Api::V1::PipelinesController < Api::V1::BaseController
 
   private
 
+  def update_card_configuration
+    payload = params.require(:pipeline)
+    configuration = payload[:card_configuration]
+    configuration = configuration.to_unsafe_h if configuration.respond_to?(:to_unsafe_h)
+    @pipeline.with_lock do
+      unless Pipelines::CardConfiguration.valid?(@pipeline, configuration)
+        return error_response(ApiErrorCodes::VALIDATION_ERROR, 'Configuração inválida', status: :unprocessable_entity)
+      end
+      unless payload[:card_configuration_revision].is_a?(Integer) &&
+             payload[:card_configuration_revision] == @pipeline.card_configuration_revision
+        return error_response('CARD_CONFIGURATION_CONFLICT', 'A configuração mudou. Recarregue para continuar', status: :conflict)
+      end
+      @pipeline.update!(card_configuration: configuration,
+                        card_configuration_revision: @pipeline.card_configuration_revision + 1)
+    end
+    success_response(data: PipelineSerializer.serialize(@pipeline, include_stages: true), message: 'Cartões atualizados para a equipe')
+  end
+
   def fetch_pipeline
     @pipeline = Pipeline.all
                           .includes(
@@ -267,6 +289,7 @@ class Api::V1::PipelinesController < Api::V1::BaseController
                               conversation: :messages
                             }
                           )
+                          .accessible_by(Current.user)
                           .find(params[:id])
   end
 
