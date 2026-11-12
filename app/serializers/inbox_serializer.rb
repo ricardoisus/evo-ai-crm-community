@@ -57,7 +57,7 @@ module InboxSerializer
 
       # WhatsApp-specific data required by channel settings screens
       if inbox.whatsapp?
-        result['provider_config'] = inbox.channel.try(:provider_config)
+        result['provider_config'] = inbox.channel.try(:provider_config)&.except('attachment_token')
         result['provider_connection'] = inbox.channel.try(:provider_connection_data)
       end
 

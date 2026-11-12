@@ -437,6 +437,7 @@ Rails.application.routes.draw do
 
       scope path: 'evolution', as: 'evolution' do
         get :health, to: 'evolution/health#show'
+        resources :attachments, only: [:create, :destroy], controller: 'evolution/attachments'
         resource :authorization, only: [:create], controller: 'evolution/authorizations'
         resources :qrcodes, only: [:create, :show], controller: 'evolution/qrcodes'
         resources :proxies, only: [:create, :show], controller: 'evolution/proxies'
@@ -763,6 +764,7 @@ Rails.application.routes.draw do
   post 'webhooks/whatsapp/evolution/:sub_event', to: 'webhooks/whatsapp#process_payload'
   post 'webhooks/whatsapp/evolution_go', to: 'webhooks/whatsapp#process_evolution_go_payload'
   post 'webhooks/whatsapp/zapi', to: 'webhooks/whatsapp#process_payload'
+  post 'webhooks/evolution_attached', to: 'webhooks/evolution_attached#create'
   post 'webhooks/evolution_hub', to: 'webhooks/evolution_hub#create'
 
   # Bot Runtime postback

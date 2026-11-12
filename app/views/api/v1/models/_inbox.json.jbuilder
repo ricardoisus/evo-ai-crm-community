@@ -123,6 +123,6 @@ if resource.whatsapp?
   json.message_templates resource.channel.try(:message_templates)
   # Include provider_config for all users (needed for Z-API, Evolution Go, etc.)
   # Sensitive fields like tokens are still protected by backend validation
-  json.provider_config resource.channel.try(:provider_config)
+  json.provider_config resource.channel.try(:provider_config)&.except('attachment_token')
   json.provider_connection resource.channel.try(:provider_connection_data)
 end

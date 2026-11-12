@@ -46,7 +46,7 @@ class Contact < ApplicationRecord
   include Wisper::Publisher
 
   self.inheritance_column = :_type_disabled
-  attr_accessor :skip_default_pipeline_assignment
+  attr_accessor :skip_default_pipeline_assignment, :passive_observation
 
   TYPES = %w[person company group].freeze
 
@@ -81,7 +81,8 @@ class Contact < ApplicationRecord
   before_validation :prepare_contact_attributes, :ensure_location_present
   before_save :ensure_location_present
   # after_create_commit :dispatch_create_event # Disabled - using Wisper events instead
-  after_create_commit :ip_lookup, :publish_contact_created, :assign_to_default_pipeline, :trigger_contact_created_automation
+  after_create_commit :ip_lookup, :publish_contact_created, :assign_to_default_pipeline, :trigger_contact_created_automation,
+                      unless: :passive_observation
   # after_update_commit :dispatch_update_event # Disabled - using Wisper events instead
   after_update_commit :publish_contact_updated, :publish_custom_attribute_changes, :publish_label_changes,
                       :trigger_contact_updated_automation
