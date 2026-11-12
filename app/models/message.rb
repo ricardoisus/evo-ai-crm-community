@@ -135,6 +135,8 @@ class Message < ApplicationRecord
   has_one :csat_survey_response, dependent: :destroy_async
   has_many :notifications, as: :primary_actor, dependent: :destroy_async
 
+  after_create -> { VetorialAgent::Capture.message(self) }
+
   after_create_commit :execute_after_create_commit_callbacks, unless: :imported?
   after_create_commit :publish_message_created, unless: :imported?
   after_create_commit :sync_message_event, unless: :imported?
