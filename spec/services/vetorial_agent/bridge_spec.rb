@@ -98,6 +98,18 @@ RSpec.describe 'Vetorial agent durable bridge' do
     expect(VetorialAgent::Policy.scoped?(conversation)).to eq(false)
   end
 
+  it 'opens only the scoped inbox with the explicit general gate and keeps team blocked' do
+    incoming
+    allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_ALLOWLIST', '').and_return('')
+    allow(ENV).to receive(:[]).with('VETORIAL_AGENT_ALL_CONTACTS').and_return('true')
+    expect(VetorialAgent::Policy.allowed?(conversation)).to eq(true)
+    allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_INTERNAL_NUMBERS', '').and_return(phone)
+    expect(VetorialAgent::Policy.allowed?(conversation)).to eq(false)
+    allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_INTERNAL_NUMBERS', '').and_return('')
+    allow(ENV).to receive(:[]).with('VETORIAL_AGENT_INBOX_ID').and_return('other')
+    expect(VetorialAgent::Policy.allowed?(conversation)).to eq(false)
+  end
+
   it 'allows private analysis outside the send allowlist without granting public capabilities' do
     incoming
     allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_ALLOWLIST', '').and_return('')
