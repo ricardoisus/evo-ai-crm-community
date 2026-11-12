@@ -220,12 +220,14 @@ class Inbox < ApplicationRecord
   end
 
   def dispatch_create_event
+    return if whatsapp? && channel.evolution_attached?
     return if ENV['ENABLE_INBOX_EVENTS'].blank?
 
     Rails.configuration.dispatcher.dispatch(INBOX_CREATED, Time.zone.now, inbox: self)
   end
 
   def dispatch_update_event
+    return if whatsapp? && channel.evolution_attached?
     return if ENV['ENABLE_INBOX_EVENTS'].blank?
 
     Rails.configuration.dispatcher.dispatch(INBOX_UPDATED, Time.zone.now, inbox: self, changed_attributes: previous_changes)
