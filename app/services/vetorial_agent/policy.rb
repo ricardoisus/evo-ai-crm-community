@@ -29,7 +29,8 @@ module VetorialAgent::Policy
   end
 
   def self.eligible_phone?(phone, allowed, internal)
-    phone.match?(/\A\+[1-9]\d{6,14}\z/) && allowed.include?(phone) && internal.exclude?(phone)
+    enabled = ENV['VETORIAL_AGENT_ALL_CONTACTS'] == 'true' || allowed.include?(phone)
+    phone.match?(/\A\+[1-9]\d{6,14}\z/) && enabled && internal.exclude?(phone)
   end
 
   def self.allowed?(conversation)
