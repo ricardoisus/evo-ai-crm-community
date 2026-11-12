@@ -36,7 +36,7 @@ RSpec.describe Evolution::AttachExistingInstance do
     stub_const('ENV', ENV.to_h.merge('BACKEND_URL' => 'https://crm.example.test', 'ENABLE_INBOX_EVENTS' => 'true'))
     allow(Rails.configuration.dispatcher).to receive(:dispatch)
     box = service.perform
-    box.dispatch_update_event
+    box.send(:dispatch_update_event)
     expect(Rails.configuration.dispatcher).not_to have_received(:dispatch).with('inbox.created', anything, anything)
     expect(Rails.configuration.dispatcher).not_to have_received(:dispatch).with('inbox.updated', anything, anything)
   end
