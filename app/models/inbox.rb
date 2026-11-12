@@ -257,6 +257,10 @@ class Inbox < ApplicationRecord
     # Se display_name não foi fornecido, usar o name original
     self.display_name = name if display_name.blank?
 
+    # An attached instance already has an immutable provider_config instance_name;
+    # its local box name is a display label, never an Evolution identifier.
+    return if whatsapp? && channel.evolution_attached?
+
     # Sanitizar o name para uso como identificador usando método do concern
     self.name = sanitize_instance_name(name)
   end
