@@ -133,6 +133,8 @@ class Conversation < ApplicationRecord
   before_create :determine_conversation_status
   before_create :ensure_waiting_since
 
+  after_update -> { VetorialAgent::Capture.assignment(self) }
+
   after_update_commit :execute_after_update_commit_callbacks
   after_create_commit :notify_conversation_creation, unless: :imported?
   after_create_commit :load_attributes_created_by_db_triggers

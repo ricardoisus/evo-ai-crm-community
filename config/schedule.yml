@@ -88,3 +88,8 @@ automation_rule_runs_cleanup_job:
   cron: '45 3 * * *'
   class: 'AutomationRuleRunsCleanupJob'
   queue: low
+
+vetorial_agent_outbox_recovery:
+  cron: "* * * * *"
+  class: "VetorialAgent::DispatchJob"
+  queue: high

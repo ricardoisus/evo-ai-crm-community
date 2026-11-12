@@ -767,6 +767,9 @@ Rails.application.routes.draw do
   post 'webhooks/evolution_attached', to: 'webhooks/evolution_attached#create'
   post 'webhooks/evolution_hub', to: 'webhooks/evolution_hub#create'
 
+  get 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#show'
+  post 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#create'
+
   # Bot Runtime postback
   post 'webhooks/bot_runtime/postback/:conversation_display_id', to: 'webhooks/bot_runtime#postback'
 

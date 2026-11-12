@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_12_010000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1468,6 +1468,41 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_010000) do
     t.index ["uid", "provider"], name: "index_users_on_uid_and_provider", unique: true
   end
 
+  create_table "vetorial_agent_commands", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "conversation_id", null: false
+    t.string "key", null: false
+    t.string "kind", null: false
+    t.string "status", default: "pending", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.jsonb "result", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id"], name: "index_vetorial_agent_commands_on_conversation_id"
+    t.index ["key"], name: "index_vetorial_agent_commands_on_key", unique: true
+  end
+
+  create_table "vetorial_agent_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "conversation_id", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "delivered_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id"], name: "index_vetorial_agent_events_on_conversation_id"
+    t.index ["created_at"], name: "vetorial_events_pending", where: "(delivered_at IS NULL)"
+  end
+
+  create_table "vetorial_agent_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "conversation_id", null: false
+    t.bigint "version", default: 0, null: false
+    t.boolean "paused", default: false, null: false
+    t.string "reason"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "fields", default: {}, null: false
+    t.jsonb "field_values", default: {}, null: false
+    t.index ["conversation_id"], name: "index_vetorial_agent_states_on_conversation_id", unique: true
+  end
+
   create_table "webhooks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "inbox_id"
     t.string "url"
@@ -1548,4 +1583,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_010000) do
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"
   add_foreign_key "user_roles", "users", column: "granted_by_id"
+  add_foreign_key "vetorial_agent_commands", "conversations"
+  add_foreign_key "vetorial_agent_events", "conversations"
+  add_foreign_key "vetorial_agent_states", "conversations"
 end
