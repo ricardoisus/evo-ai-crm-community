@@ -2,6 +2,7 @@ class AgentBots::ProcessInactivityActionsJob < ApplicationJob
   queue_as :default
 
   def perform(conversation_id, agent_bot_id)
+    return if VetorialAgent::Deployment.managed_bot?(agent_bot_id)
     Rails.logger.info "[ProcessInactivityActions] === Processing conversation #{conversation_id} with bot #{agent_bot_id} ==="
 
     conversation = Conversation.find_by(id: conversation_id)

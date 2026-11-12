@@ -29,6 +29,8 @@ class VetorialAgent::Bridge
   private
 
   def authorized_state(data)
+    deployment = VetorialAgent::Deployment.for_conversation(@conversation)
+    raise Rejected if deployment && !deployment.command_current?(data)
     state = VetorialAgent::State.find_or_create_by!(conversation: @conversation)
     eligible = if %w[analysis analysis_media].include?(data['kind'])
                  VetorialAgent::Policy.analysis_eligible?(@conversation)

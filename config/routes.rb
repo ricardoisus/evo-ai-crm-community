@@ -36,6 +36,19 @@ Rails.application.routes.draw do
   get '/api', to: 'api#index'
   namespace :api, defaults: { format: 'json' } do
     namespace :v1 do
+      get 'conversations/:conversation_id/vetorial_ia', to: 'vetorial_conversation_controls#show'
+      post 'conversations/:conversation_id/vetorial_ia/pause', to: 'vetorial_conversation_controls#pause'
+      post 'conversations/:conversation_id/vetorial_ia/resume', to: 'vetorial_conversation_controls#resume'
+      get 'agent_catalog', to: 'agent_catalog#index'
+      resources :vetorial_agents, only: [:show] do
+        member do
+          get 'revisions', action: :revisions
+          post 'revisions', action: :create_revision
+          get 'revisions/:revision_id', action: :revision
+          post 'revisions/:revision_id/publish', action: :publish
+          post 'revisions/:revision_id/restore', action: :restore
+        end
+      end
       namespace :admin do
         get 'app_configs/:config_type', to: 'app_configs#show', as: :app_config
         post 'app_configs/:config_type', to: 'app_configs#create', as: :app_configs
@@ -767,6 +780,7 @@ Rails.application.routes.draw do
   post 'webhooks/evolution_attached', to: 'webhooks/evolution_attached#create'
   post 'webhooks/evolution_hub', to: 'webhooks/evolution_hub#create'
 
+  get 'internal/vetorial_agent/config/:deployment_id', to: 'internal/vetorial_agent_configuration#show'
   get 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#show'
   post 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#create'
 

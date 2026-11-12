@@ -2,6 +2,7 @@ class AgentBots::DelayedMessageJob < ApplicationJob
   queue_as :default
 
   def perform(agent_bot_id, segments, conversation_id, segment_index)
+    return if VetorialAgent::Deployment.managed_bot?(agent_bot_id)
     Rails.logger.info '[AgentBot DelayedMessageJob] === JOB STARTED ==='
     Rails.logger.info "[AgentBot DelayedMessageJob] Agent Bot ID: #{agent_bot_id}"
     Rails.logger.info "[AgentBot DelayedMessageJob] Conversation ID: #{conversation_id}"

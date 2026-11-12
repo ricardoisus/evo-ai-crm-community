@@ -378,6 +378,7 @@ class AgentBotListener < BaseListener
   private
 
   def connected_agent_bot_exist?(inbox)
+    return false if VetorialAgent::Deployment.managed_bot?(inbox.agent_bot_inbox&.agent_bot_id)
     return false if Instagram::AmhSafety.blocked_inbox?(inbox)
 
     return false if inbox.agent_bot_inbox.blank?
@@ -505,6 +506,7 @@ class AgentBotListener < BaseListener
   end
 
   def process_webhook_bot_event(agent_bot, payload)
+    return if VetorialAgent::Deployment.managed_bot?(agent_bot.id)
     return if agent_bot.outgoing_url.blank?
 
     # Bot Runtime handles debounce, AI calls and dispatch externally
