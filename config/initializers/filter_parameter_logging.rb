@@ -17,3 +17,6 @@ Rails.application.config.filter_parameters += [:entry, :code, :state]
 Rails.application.config.filter_parameters += [:event, :rate_key, :encrypted_payload]
 
 Rails.application.config.filter_parameters += [:email_hash, :assertion, :attribution_id, :inbound_event_id]
+
+# Evolution ingress includes the API key and private message bodies.
+Rails.application.config.filter_parameters += [:apikey, :data]

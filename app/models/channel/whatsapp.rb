@@ -62,6 +62,19 @@ class Channel::Whatsapp < ApplicationRecord
   after_destroy_commit -> { provider_service.unsubscribe_from_webhooks },
                        if: -> { provider == 'zapi' }
 
+  before_destroy :preserve_attached_instance, prepend: true
+
+  def evolution_attached?
+    provider == 'evolution' && provider_config['existing_instance_attached'] == true
+  end
+
+  def preserve_attached_instance
+    return unless evolution_attached?
+
+    errors.add(:base, 'Use a remoção do webhook; preserve a caixa e a instância anexada')
+    throw :abort
+  end
+
   def name
     'Whatsapp'
   end
@@ -160,6 +173,8 @@ class Channel::Whatsapp < ApplicationRecord
   end
 
   def disconnect_channel_provider
+    raise Evolution::AttachExistingInstance::Conflict, 'Instância anexada: desconexão recusada' if evolution_attached?
+
     provider_service.disconnect_channel_provider
   end
 

@@ -4,7 +4,13 @@ class Api::V1::Evolution::AuthorizationsController < Api::V1::BaseController
   })
 
   def create
-    Rails.logger.info "Evolution API connection verification called with params: #{params.inspect}"
+    auth = params[:authorization] || params
+    instance = auth[:instance_name].to_s
+    if instance == 'vetorial' || auth[:phone_number].to_s.gsub(/\D/, '') == '554792548551' ||
+       Channel::Whatsapp.where(provider: 'evolution').where("provider_config ->> 'instance_name' = ?", instance)
+                        .where("provider_config ->> 'existing_instance_attached' = 'true'").exists?
+      return render json: { error: 'Use anexar instância existente; recriação recusada' }, status: :conflict
+    end
 
     # Parâmetros vêm dentro de authorization
     auth_params = params[:authorization] || params

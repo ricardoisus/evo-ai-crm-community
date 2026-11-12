@@ -50,6 +50,8 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
     Rails.logger.info '[WHATSAPP] processing received event'
 
     channel = find_channel(params)
+    return if channel&.evolution_attached? # Only the authenticated attachment callback accepts these events.
+
     if channel_is_inactive?(channel)
       # Fix B (EVO-1967): reconciliacao ativa. Se chega uma mensagem real e a Evolution
       # reporta a instancia como 'open', a flag de reauthorization esta presa indevidamente
