@@ -22,6 +22,7 @@ RSpec.describe Evolution::AttachExistingInstance do
   it 'GETs first, creates one inert local box and only sets the free webhook' do
     box = service.perform
     expect(box.display_name).to eq('Vetorial · WhatsApp')
+    expect(box.name).to eq('Vetorial · WhatsApp')
     expect(box).not_to be_enable_auto_assignment
     expect(box.channel.provider_config['mark_as_read']).to eq(false)
     expect(@written).to include('enabled' => true, 'base64' => true, 'events' => described_class::EVENTS)
