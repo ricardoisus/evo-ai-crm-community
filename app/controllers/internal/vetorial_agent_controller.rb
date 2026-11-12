@@ -28,6 +28,7 @@ class Internal::VetorialAgentController < ActionController::API
     item = @conversation.pipeline_items.active.find_by(pipeline_id: ENV.fetch('VETORIAL_AGENT_PIPELINE_ID', nil))
     {
       version: state.version, paused: state.paused, allowed: VetorialAgent::Policy.allowed?(@conversation),
+      analysis_allowed: VetorialAgent::Policy.analysis_eligible?(@conversation),
       eligible: VetorialAgent::Policy.eligible?(@conversation), nome_contato: @conversation.contact.name,
       campos_negocio: state.fields.merge(item&.custom_fields || {}).merge(
         'etapa_atual' => item&.pipeline_stage&.name, 'etapa_definida_por_humano' => human_stage?(item)

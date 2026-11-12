@@ -17,7 +17,7 @@ class VetorialAgent::Bridge
         next existing.result.merge('status' => existing.status)
       end
       state = authorized_state(data)
-      next media(data) if data['kind'] == 'media'
+      next media(data) if %w[media analysis_media].include?(data['kind'])
 
       command = VetorialAgent::Command.create!(conversation: @conversation, key: data['key'], kind: data.fetch('kind'), payload: data)
       result = execute(command, state, data)
@@ -30,8 +30,8 @@ class VetorialAgent::Bridge
 
   def authorized_state(data)
     state = VetorialAgent::State.find_or_create_by!(conversation: @conversation)
-    eligible = if data['kind'] == 'analysis'
-                 VetorialAgent::Policy.eligible?(@conversation)
+    eligible = if %w[analysis analysis_media].include?(data['kind'])
+                 VetorialAgent::Policy.analysis_eligible?(@conversation)
                else
                  VetorialAgent::Policy.allowed?(@conversation) && !state.paused
                end

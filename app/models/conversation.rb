@@ -133,7 +133,7 @@ class Conversation < ApplicationRecord
   before_create :determine_conversation_status
   before_create :ensure_waiting_since
 
-  after_update -> { VetorialAgent::Capture.assignment(self) }
+  after_update -> { VetorialAgent::Capture.assignment(self) }, if: -> { saved_change_to_assignee_id? || saved_change_to_label_list? }
 
   after_update_commit :execute_after_update_commit_callbacks
   after_create_commit :notify_conversation_creation, unless: :imported?

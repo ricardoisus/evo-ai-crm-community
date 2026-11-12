@@ -46,6 +46,12 @@ RSpec.describe 'Vetorial agent durable bridge' do
     { 'key' => 'synthetic-key', 'version' => 1, 'kind' => kind }.merge(payload.deep_stringify_keys)
   end
 
+  it 'skips assignment capture for unrelated conversation updates' do
+    incoming
+    expect(VetorialAgent::Capture).not_to receive(:assignment)
+    conversation.update!(custom_attributes: { 'synthetic' => true })
+  end
+
   it 'captures inert U8 messages within the transaction and rolls outbox back with source' do
     conversation
     Conversation.transaction do
@@ -90,6 +96,26 @@ RSpec.describe 'Vetorial agent durable bridge' do
     expect { bridge.call(command(text: 'No')) }.to raise_error(VetorialAgent::Bridge::Rejected)
     allow(ENV).to receive(:[]).with('VETORIAL_AGENT_INBOX_ID').and_return('other')
     expect(VetorialAgent::Policy.scoped?(conversation)).to eq(false)
+  end
+
+  it 'allows private analysis outside the send allowlist without granting public capabilities' do
+    incoming
+    allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_ALLOWLIST', '').and_return('')
+    allow(ENV).to receive(:[]).with('VETORIAL_AGENT_ANALYSIS_ALL').and_return('true')
+    expect(VetorialAgent::Policy.analysis_eligible?(conversation)).to eq(true)
+    expect(VetorialAgent::Policy.allowed?(conversation)).to eq(false)
+    allow_any_instance_of(VetorialAgent::Bridge).to receive(:media).and_return('sucesso' => true, 'mime' => 'audio/ogg', 'base64' => 'c3ludGhldGlj')
+    data = command('analysis_media', attachment_id: 'synthetic'); data['key'] = 'private-media'
+    expect(bridge.call(data)['sucesso']).to eq(true)
+    expect { bridge.call(command('analysis', note: 'Resumo privado')) }
+      .to change { conversation.messages.where(private: true).count }.by(1)
+    %w[send typing fields handoff silent media].each do |kind|
+      data = command(kind, text: 'Nunca enviar'); data['key'] = "blocked-#{kind}"
+      expect { bridge.call(data) }.to raise_error(VetorialAgent::Bridge::Rejected)
+    end
+    expect(conversation.messages.outgoing.where(private: false).count).to eq(0)
+    allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_INTERNAL_NUMBERS', '').and_return(phone)
+    expect(VetorialAgent::Policy.analysis_eligible?(conversation)).to eq(false)
   end
 
   it 'deduplicates commands and rejects key collision with changed payload' do

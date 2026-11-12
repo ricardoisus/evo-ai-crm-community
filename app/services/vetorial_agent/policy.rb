@@ -19,6 +19,15 @@ module VetorialAgent::Policy
     scoped?(conversation) && eligible_phone?(phone, allowed, internal) && !conversation.contact.blocked?
   end
 
+  # The analyst has private-only capabilities; it never expands public sending permission.
+  def self.analysis_eligible?(conversation)
+    return eligible?(conversation) unless ENV['VETORIAL_AGENT_ANALYSIS_ALL'] == 'true'
+
+    phone = conversation.contact.phone_number.to_s
+    internal = ENV.fetch('VETORIAL_AGENT_INTERNAL_NUMBERS', '').split(',').map(&:strip)
+    scoped?(conversation) && phone.match?(/\A\+[1-9]\d{6,14}\z/) && internal.exclude?(phone) && !conversation.contact.blocked?
+  end
+
   def self.eligible_phone?(phone, allowed, internal)
     phone.match?(/\A\+[1-9]\d{6,14}\z/) && allowed.include?(phone) && internal.exclude?(phone)
   end
