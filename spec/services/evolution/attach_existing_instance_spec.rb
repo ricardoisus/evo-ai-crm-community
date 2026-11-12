@@ -32,6 +32,15 @@ RSpec.describe Evolution::AttachExistingInstance do
     expect(client).to have_received(:set_webhook).once
   end
 
+  it 'does not dispatch generic inbox lifecycle events containing private provider configuration' do
+    stub_const('ENV', ENV.to_h.merge('BACKEND_URL' => 'https://crm.example.test', 'ENABLE_INBOX_EVENTS' => 'true'))
+    allow(Rails.configuration.dispatcher).to receive(:dispatch)
+    box = service.perform
+    box.dispatch_update_event
+    expect(Rails.configuration.dispatcher).not_to have_received(:dispatch).with('inbox.created', anything, anything)
+    expect(Rails.configuration.dispatcher).not_to have_received(:dispatch).with('inbox.updated', anything, anything)
+  end
+
   it 'refuses a foreign webhook before creating a box' do
     allow(client).to receive(:webhook).and_return({ 'url' => 'https://existing.example.test' })
     expect { service.perform }.to raise_error(described_class::Conflict, /Webhook ocupado/)
