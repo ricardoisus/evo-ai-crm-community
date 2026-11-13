@@ -44,3 +44,21 @@ Não há contrato final para a I4: estes endpoints ainda precisam dos casos comp
 | I2 C9 | Atualizar operação pela interface no runbook somente após a interface/backend completos; A14 continua vigente |
 
 Não há deploy, merge, alteração de Evolution, chamada paga ou mensagem externa nesta etapa.
+
+## J1 — Ambiente de testes verde
+
+Data: 13/11/2026. Autor: Theo, CTO · Codex Sol. Status: implementado e testado localmente; sem deploy.
+Fonte: entrega `I3-backend-runtime.md` §J1 da frente Evo CRM Agentes.
+
+Ruby local 3.4.10 (`.ruby-version`); Gemfile aceita patches 3.4 a partir de 3.4.4, preservando compatibilidade com o Dockerfile atual. Lock recomposto sem atualização de gems.
+
+```sh
+cd /Users/ricardohenrique/Projetos/evo-crm/_evo-i3-crm
+docker start evo-i3-postgres evo-i3-redis
+# No Mac: evitar OpenSSL 4 ao compilar a gem openssl 3.2.0 fixada no lock.
+BUNDLE_BUILD__OPENSSL=--with-openssl-dir=/opt/homebrew/opt/openssl@3 bundle install
+bundle check
+RAILS_ENV=test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55439 POSTGRES_DATABASE=evo_i3_test POSTGRES_USERNAME=postgres REDIS_URL=redis://127.0.0.1:56389 SECRET_KEY_BASE=synthetic-j1-local-only bundle exec rspec spec/services/vetorial_agent spec/controllers/api/v1/vetorial_agents_controller_spec.rb spec/requests/internal/vetorial_agent_spec.rb spec/requests/internal/vetorial_agent_configuration_spec.rb
+```
+
+Resultado: 32 exemplos, zero falhas. Banco preexistente exclusivamente sintético; nenhum reset/schema load necessário. Docker permanece aberto por instrução J1. Isso resolve o ambiente, sem conceder aceite às implementações pendentes I31–I34.
