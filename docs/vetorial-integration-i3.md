@@ -37,7 +37,7 @@ Não há contrato final para a I4: estes endpoints ainda precisam dos casos comp
 | I1 R5/R6 | Implementar schema/ingestão/outbox de execuções, usage durável, métricas e probes sanitizados; heartbeat ainda só tem tabela/DTO |
 | I1 R7 / I2 C14 | Implementar sandbox sem acesso ao transporte live e reserva de orçamento concorrente/durável; nenhuma API de teste está implementada |
 | I1 R2 | Implementar ativação/desafio all, alteração de parâmetros/integrações, expediente validado, binding HTTP e autorização da remoção de responsável |
-| I2 C1 | Implementar marcador de boot guard_ready e comando operacional separado que verifica inventário de tasks; booleano de entrada no serviço NÃO é prova operacional |
+| I2 C1 | Marcador e comando concluídos na J4 abaixo; ensaio rolling integrado continua pendente |
 | I1 §9 / I2 C1/C7 | Ensaiar A14→compatível→CRM e rollback, inclusive sobreposição, fila/rascunho/recibo; o teste isolado de default não substitui esse ensaio |
 | I1 §9 | Importar snapshot real observado em memória, verificar identidade/pipeline/hash e valores efetivos; atual teste cobre bytes dos prompts/contratos e valores conhecidos, não equivalência completa de execução |
 | I1 §10 | Completar schemas fechados aninhados, constraints e matriz de autorização/idempotência/concorrência de todos os endpoints; não promover guardas parciais como prova integral |
@@ -62,3 +62,17 @@ RAILS_ENV=test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55439 POSTGRES_DATABASE=evo
 ```
 
 Resultado: 32 exemplos, zero falhas. Banco preexistente exclusivamente sintético; nenhum reset/schema load necessário. Docker permanece aberto por instrução J1. Isso resolve o ambiente, sem conceder aceite às implementações pendentes I31–I34.
+
+
+## J4 — Boot, vínculo seguro e off na transição
+
+Data: 13/11/2026. Etapa: J4. Autor: Theo, CTO · Codex Sol. Status: implementado/testado, não implantado.
+Fontes: I2 §2 C1/C6; I1 §§2.2/9; entrega I3 §J4.
+
+- `after_initialize` executa GuardBoot: marca deployments existentes, sem criar vínculo e sem exigir schema antes da migração. Importar deployment depois do boot exige novo boot guardado. Escrita comum de `guard_ready=true` é recusada pelo modelo.
+- `Binding.attach!` recarrega sob lock, exige flag persistida e inventário injetável dos dois serviços. Exige digest imutável e ao menos uma task running nova por serviço. Qualquer task antiga não terminal (inclusive running/starting) recusa, mesmo com flag. Histórico terminal não impede.
+- Comando explícito, separado de migração/deploy: `bundle exec rails runner script/vetorial_agent_bind.rb DEPLOYMENT_ID IMAGE@sha256:DIGEST < inventory.json`.
+- Operador coleta inventário fresco completo no manager com `docker service ps --no-trunc --format '{{json .}}' NOME_DO_SERVICO` para CRM e Sidekiq. Não usar filtro desired-state; uma task com desired shutdown ainda pode estar running. Converte `CurrentState` para primeiro termo minúsculo em `state`, `Image` em `image`; JSON final: `{"crm":[{"state":"running","image":"...@sha256:..."}],"sidekiq":[...]}`. Não reutilizar snapshot antigo; não embutir secrets. Coleta é responsabilidade do operador; binding não consulta Swarm nem altera serviço.
+- Guardas de listener/default/inatividade existentes preservadas. SendJob existente revalida Policy antes do transporte; teste J4 enfileira com piloto ativo e desliga durante legacy_transition: descarta sem construir transporte. Novo comando também recusado.
+- RSpec do comando J1: 36 exemplos, zero falhas, zero pendentes. Inclui ausência de flag, flag com task antiga running/starting, sucesso/idempotência com tudo novo, default/listener preservados e off na fila.
+- Sem produção, API paga ou evento real. C1 ensaio rolling completo permanece para etapa própria; não é aceite integral I3.

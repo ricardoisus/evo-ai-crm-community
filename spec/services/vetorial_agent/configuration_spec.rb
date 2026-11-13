@@ -3,6 +3,8 @@ require 'rails_helper'
 RSpec.describe 'Vetorial CRM configuration foundation' do
   let(:fixture) { JSON.parse(File.read(Rails.root.join('spec/fixtures/vetorial_agent/snapshot.json'))) }
   let(:payload) { fixture.fetch('payload') }
+  let(:digest) { 'synthetic@sha256:' + 'a' * 64 }
+  let(:inventory) { %w[crm sidekiq].to_h { |name| [name, [{ 'state' => 'running', 'image' => digest }]] } }
   let(:bot) { AgentBot.create!(name: 'Synthetic configuration', outgoing_url: 'http://agent.invalid') }
   let(:deployment) { VetorialAgent::Deployment.create!(agent_bot: bot, slug: 'synthetic') }
 
@@ -71,8 +73,37 @@ RSpec.describe 'Vetorial CRM configuration foundation' do
 
   it 'refuses binding without both the boot guard and task inventory confirmation' do
     published
-    expect { VetorialAgent::Binding.attach!(deployment, guard_ready: true, all_tasks_on_guarded_digest: true) }.to raise_error(VetorialAgent::Configuration::Conflict)
-    deployment.update!(guard_ready: true)
-    expect { VetorialAgent::Binding.attach!(deployment, guard_ready: true, all_tasks_on_guarded_digest: false) }.to raise_error(VetorialAgent::Configuration::Conflict)
+    expect { VetorialAgent::Binding.attach!(deployment, inventory: -> { inventory }, digest: digest) }.to raise_error(VetorialAgent::Configuration::Conflict)
+    VetorialAgent::GuardBoot.mark_ready!
+    deployment.reload
+    expect { VetorialAgent::Binding.attach!(deployment, inventory: -> { inventory.merge('sidekiq' => [{ 'state' => 'starting', 'image' => 'old' }]) }, digest: digest) }.to raise_error(VetorialAgent::Configuration::Conflict)
   end
+  it 'allows only boot to mark the guard and does not create a binding at boot' do
+    published
+    expect { deployment.update!(guard_ready: true) }.to raise_error(ActiveRecord::RecordInvalid)
+    deployment.reload
+    expect { VetorialAgent::GuardBoot.mark_ready! }.not_to change(AgentBotInbox, :count)
+    expect(deployment.reload.guard_ready).to be true
+  end
+
+  %w[running starting].each do |state|
+    it "refuses an old #{state} task even alongside new running CRM and Sidekiq" do
+      published
+      VetorialAgent::GuardBoot.mark_ready!
+      mixed = inventory.deep_dup
+      mixed['sidekiq'] << { 'state' => state, 'image' => 'synthetic@sha256:' + 'b' * 64 }
+      expect do
+        VetorialAgent::Binding.attach!(deployment, inventory: -> { mixed }, digest: digest)
+      end.to raise_error(VetorialAgent::Configuration::Conflict)
+      expect(AgentBotInbox.count).to eq(0)
+    end
+  end
+
+  it 'fails closed for missing services and accepts only new live tasks with old terminal history' do
+    expect { VetorialAgent::TaskInventory.verify!({}, digest) }.to raise_error(VetorialAgent::Configuration::Conflict)
+    expect { VetorialAgent::TaskInventory.verify!(inventory, 'mutable:tag') }.to raise_error(VetorialAgent::Configuration::Conflict)
+    inventory['crm'] << { 'state' => 'shutdown', 'image' => 'old' }
+    expect(VetorialAgent::TaskInventory.verify!(inventory, digest)).to be true
+  end
+
 end

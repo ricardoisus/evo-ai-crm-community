@@ -5,6 +5,12 @@ class VetorialAgent::Deployment < ApplicationRecord
   has_many :profiles, class_name: 'VetorialAgent::Profile', dependent: :restrict_with_exception
   has_many :revisions, class_name: 'VetorialAgent::Revision', dependent: :restrict_with_exception
   has_many :audits, class_name: 'VetorialAgent::Audit', dependent: :restrict_with_exception
+  validate :guard_ready_is_boot_owned
+
+  def guard_ready_is_boot_owned
+    errors.add(:guard_ready, 'é gravada somente pelo boot') if guard_ready_changed? && guard_ready
+  end
+
   validates :slug, uniqueness: true, presence: true
   validates :control_source, inclusion: { in: %w[legacy_transition crm] }
 

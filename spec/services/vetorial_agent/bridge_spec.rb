@@ -22,6 +22,8 @@ RSpec.describe 'Vetorial agent durable bridge' do
     ci = ContactInbox.create!(inbox: box, contact: contact, source_id: phone.delete_prefix('+'))
     Conversation.create!(inbox: box, contact: contact, contact_inbox: ci, source: :imported, status: :open)
   end
+  let(:digest) { 'synthetic@sha256:' + 'a' * 64 }
+  let(:inventory) { %w[crm sidekiq].to_h { |name| [name, [{ 'state' => 'running', 'image' => digest }]] } }
   let(:bot) { AgentBot.create!(name: 'Ricardo IA sintético', outgoing_url: 'http://agent.invalid') }
   let(:bridge) { VetorialAgent::Bridge.new(conversation) }
 
@@ -244,8 +246,11 @@ RSpec.describe 'Vetorial agent durable bridge' do
   it 'keeps the inbox default and excludes native listener and inactivity for managed bots' do
     deployment = managed_deployment
     original = box.reload.default_conversation_status_value
-    deployment.update!(guard_ready: true)
-    VetorialAgent::Binding.attach!(deployment, guard_ready: true, all_tasks_on_guarded_digest: true)
+    VetorialAgent::GuardBoot.mark_ready!
+    deployment.reload
+    VetorialAgent::Binding.attach!(deployment, inventory: -> { inventory }, digest: digest)
+    expect(AgentBotInbox.where(inbox: box, agent_bot: bot).count).to eq(1)
+    expect { VetorialAgent::Binding.attach!(deployment, inventory: -> { inventory }, digest: digest) }.not_to change(AgentBotInbox, :count)
     expect(box.reload.default_conversation_status_value).to eq(original)
     expect(AgentBotListener.instance.send(:connected_agent_bot_exist?, box)).to be false
     expect(AgentBots::InactivityActionsService).not_to receive(:new)
@@ -255,14 +260,20 @@ RSpec.describe 'Vetorial agent durable bridge' do
   it 'blocks legacy sends when the managed mode is off during transition' do
     managed_deployment
     incoming
+    bridge.call(command(text: 'Resposta em fila'))
+    pending = VetorialAgent::Command.find_by!(key: 'synthetic-key')
     deployment = VetorialAgent::Deployment.first
+    expect(deployment.control_source).to eq('legacy_transition')
     old = deployment.payload.deep_dup
     old['revision'] = 2
     old['policy_epoch'] = 2
     old['activation']['atendimento'] = 'off'
     revision = deployment.revisions.create!(number: 2, payload: old, sha256: VetorialAgent::Snapshot.digest(old), status: 'published')
     deployment.update!(active_revision: revision, policy_epoch: 2)
-    expect { bridge.call(command(text: 'Não enviar')) }.to raise_error(VetorialAgent::Bridge::Rejected)
+    expect(VetorialAgent::Transport).not_to receive(:new)
+    VetorialAgent::SendJob.perform_now(pending.id)
+    expect(pending.reload.status).to eq('discarded')
+    expect { bridge.call(command(text: 'Não enviar', key: 'after-off')) }.to raise_error(VetorialAgent::Bridge::Rejected)
   end
 
   it 'pauses and resumes without changing the commercial status or reopening history' do

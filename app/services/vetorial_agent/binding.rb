@@ -1,9 +1,10 @@
 class VetorialAgent::Binding
   # Deliberately separate from schema/import. Operator must verify ALL CRM/Sidekiq
   # tasks run the new digest first. A flag alone cannot establish that invariant.
-  def self.attach!(deployment, guard_ready:, all_tasks_on_guarded_digest:)
-    raise VetorialAgent::Configuration::Conflict unless guard_ready && all_tasks_on_guarded_digest && deployment.guard_ready
+  def self.attach!(deployment, inventory:, digest:)
     deployment.with_lock do
+      raise VetorialAgent::Configuration::Conflict unless deployment.guard_ready
+      VetorialAgent::TaskInventory.verify!(inventory.call, digest)
       inbox = Inbox.find(deployment.payload.fetch('binding').fetch('inbox_ids').sole)
       inbox.with_lock do
         existing = inbox.agent_bot_inbox
