@@ -1,23 +1,17 @@
 require 'rails_helper'
 
 RSpec.describe 'Internal Vetorial telemetry API', type: :request do
-  self.use_transactional_tests = false
-
   let(:secret) { "synthetic-telemetry-#{('x' * 32)}" }
   let(:path) { '/internal/vetorial_agent/telemetry' }
 
   before do
-    [VetorialAgent::TelemetryEvent, VetorialAgent::Usage, VetorialAgent::Execution,
-     VetorialAgent::RuntimeStatus, VetorialAgent::Audit, VetorialAgent::Profile,
-     VetorialAgent::Revision, VetorialAgent::Deployment].each(&:delete_all)
-    AgentBot.where(name: 'Synthetic telemetry').delete_all
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:[]).with('VETORIAL_AGENT_SECRET_FILE').and_return(nil)
     allow(ENV).to receive(:fetch).with('VETORIAL_AGENT_SECRET', '').and_return(secret)
   end
 
-  after do
+  def delete_telemetry_fixtures
     [VetorialAgent::TelemetryEvent, VetorialAgent::Usage, VetorialAgent::Execution,
      VetorialAgent::RuntimeStatus, VetorialAgent::Audit, VetorialAgent::Profile,
      VetorialAgent::Revision, VetorialAgent::Deployment].each(&:delete_all)
@@ -76,22 +70,42 @@ RSpec.describe 'Internal Vetorial telemetry API', type: :request do
     expect(VetorialAgent::Execution.count).to eq(1)
   end
 
-  it 'serializes concurrent requests with the same idempotency key and stores one response for 24 hours' do
-    event = execution
-    results = Queue.new
-    threads = Array.new(4) do
-      Thread.new do
-        ActiveRecord::Base.connection_pool.with_connection do
-          results << VetorialAgent::Telemetry.new([event], idempotency_key: 'concurrent-key').call
+  context 'with concurrent database connections' do
+    self.use_transactional_tests = false
+
+    before { delete_telemetry_fixtures }
+    after { delete_telemetry_fixtures }
+
+    it 'serializes concurrent requests with the same idempotency key and stores one response for 24 hours' do
+      event = execution
+      pool = ActiveRecord::Base.connection_pool
+      warmed_connections = Array.new(4) { pool.checkout.tap(&:verify!) }
+      warmed_connections.each { |connection| pool.checkin(connection) }
+
+      ready = Queue.new
+      start = Queue.new
+      results = Queue.new
+      threads = Array.new(4) do
+        Thread.new do
+          pool.with_connection do |connection|
+            ready << true
+            start.pop
+            response = VetorialAgent::Telemetry.new([event], idempotency_key: 'concurrent-key').call
+            results << [connection.select_value('SELECT pg_backend_pid()'), response]
+          end
         end
       end
-    end
-    threads.each(&:join)
+      4.times { ready.pop }
+      4.times { start << true }
+      threads.each(&:value)
 
-    expect(Array.new(4) { results.pop }.uniq).to eq([{ 'acknowledged' => [event[:event_id]] }])
-    expect(VetorialAgent::Execution.count).to eq(1)
-    audit = deployment.audits.find_by!(action: 'telemetry', idempotency_key: 'concurrent-key')
-    expect(audit.expires_at).to be_within(5.seconds).of(24.hours.from_now)
+      connection_results = Array.new(4) { results.pop }
+      expect(connection_results.map(&:first).uniq.size).to eq(4)
+      expect(connection_results.map(&:last).uniq).to eq([{ 'acknowledged' => [event[:event_id]] }])
+      expect(VetorialAgent::Execution.count).to eq(1)
+      audit = deployment.audits.find_by!(action: 'telemetry', idempotency_key: 'concurrent-key')
+      expect(audit.expires_at).to be_within(5.seconds).of(24.hours.from_now)
+    end
   end
 
   it 'returns correct live aggregates with a Sao Paulo month and integer micro-USD costs' do
