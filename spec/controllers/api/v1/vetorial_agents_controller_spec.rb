@@ -33,8 +33,21 @@ RSpec.describe Api::V1::VetorialAgentsController, type: :controller do
     allow(user).to receive(:assigned_inboxes).and_return(scope)
     get :show, params: { id: record.id }
     expect(response.status).to eq(200)
-    expect(JSON.parse(response.body).dig('data', 'source')).to eq('vetorial_runtime')
+    expect(response.parsed_body.dig('data', 'source')).to eq('vetorial_runtime')
     post :create_revision, params: { id: record.id, payload: data }
     expect(response.status).to eq(403)
+  end
+
+  it 'serves inbox-scoped telemetry metrics to a read-only user' do
+    record = profile
+    allow(user).to receive(:assigned_inboxes).and_return(double('inbox scope', pluck: data['binding']['inbox_ids']))
+    deployment.executions.create!(execution_id: SecureRandom.uuid, conversation_id: SecureRandom.uuid,
+                                  role: 'atendimento', source: 'live', revision: 1, policy_epoch: 1,
+                                  status: 'succeeded', latency_ms: 100, outcome: 'send_confirmed', occurred_at: Time.current)
+
+    get :metrics, params: { id: record.id, source: 'live' }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig('data', 'conversations')).to eq(1)
   end
 end

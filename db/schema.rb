@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_12_160000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1519,6 +1519,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_160000) do
     t.index ["created_at"], name: "vetorial_events_pending", where: "(delivered_at IS NULL)"
   end
 
+  create_table "vetorial_agent_executions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "execution_id", null: false
+    t.uuid "conversation_id", null: false
+    t.string "role", null: false
+    t.string "source", null: false
+    t.integer "revision", null: false
+    t.integer "policy_epoch", null: false
+    t.string "status", null: false
+    t.bigint "latency_ms", null: false
+    t.string "outcome", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "execution_id"], name: "vetorial_execution_identity", unique: true
+    t.index ["deployment_id", "source", "occurred_at"], name: "vetorial_execution_metrics"
+    t.index ["deployment_id"], name: "index_vetorial_agent_executions_on_deployment_id"
+  end
+
   create_table "vetorial_agent_profiles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "deployment_id", null: false
     t.string "role", null: false
@@ -1554,6 +1573,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_160000) do
     t.jsonb "integrations", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "revision"
+    t.integer "policy_epoch"
     t.index ["deployment_id", "instance_id"], name: "vetorial_runtime_instance", unique: true
     t.index ["deployment_id"], name: "index_vetorial_agent_runtime_statuses_on_deployment_id"
   end
@@ -1568,6 +1589,39 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_160000) do
     t.jsonb "fields", default: {}, null: false
     t.jsonb "field_values", default: {}, null: false
     t.index ["conversation_id"], name: "index_vetorial_agent_states_on_conversation_id", unique: true
+  end
+
+  create_table "vetorial_agent_telemetry_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "event_id", null: false
+    t.string "kind", null: false
+    t.string "payload_sha256", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id"], name: "index_vetorial_agent_telemetry_events_on_deployment_id"
+    t.index ["event_id"], name: "index_vetorial_agent_telemetry_events_on_event_id", unique: true
+  end
+
+  create_table "vetorial_agent_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "call_id", null: false
+    t.uuid "execution_id", null: false
+    t.string "source", null: false
+    t.string "provider", null: false
+    t.string "model", null: false
+    t.bigint "input_tokens", null: false
+    t.bigint "cached_tokens", null: false
+    t.bigint "output_tokens", null: false
+    t.bigint "reasoning_tokens", null: false
+    t.bigint "cost_micro_usd"
+    t.string "usage_state", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "call_id"], name: "vetorial_usage_identity", unique: true
+    t.index ["deployment_id", "source", "occurred_at"], name: "vetorial_usage_metrics"
+    t.index ["deployment_id"], name: "index_vetorial_agent_usages_on_deployment_id"
   end
 
   create_table "webhooks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1655,8 +1709,11 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_160000) do
   add_foreign_key "vetorial_agent_deployments", "agent_bots"
   add_foreign_key "vetorial_agent_deployments", "vetorial_agent_revisions", column: "active_revision_id"
   add_foreign_key "vetorial_agent_events", "conversations"
+  add_foreign_key "vetorial_agent_executions", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_profiles", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_revisions", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_runtime_statuses", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_states", "conversations"
+  add_foreign_key "vetorial_agent_telemetry_events", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
 end

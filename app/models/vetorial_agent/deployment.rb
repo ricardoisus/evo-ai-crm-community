@@ -5,6 +5,10 @@ class VetorialAgent::Deployment < ApplicationRecord
   has_many :profiles, class_name: 'VetorialAgent::Profile', dependent: :restrict_with_exception
   has_many :revisions, class_name: 'VetorialAgent::Revision', dependent: :restrict_with_exception
   has_many :audits, class_name: 'VetorialAgent::Audit', dependent: :restrict_with_exception
+  has_many :executions, class_name: 'VetorialAgent::Execution', dependent: :restrict_with_exception
+  has_many :usages, class_name: 'VetorialAgent::Usage', dependent: :restrict_with_exception
+  has_many :telemetry_events, class_name: 'VetorialAgent::TelemetryEvent', dependent: :restrict_with_exception
+  has_many :runtime_statuses, class_name: 'VetorialAgent::RuntimeStatus', dependent: :restrict_with_exception
   validate :guard_ready_is_boot_owned
 
   def guard_ready_is_boot_owned

@@ -1,6 +1,6 @@
 class Api::V1::VetorialAgentsController < Api::V1::BaseController
-  READ_ACTIONS = %w[show revisions revision].freeze
-  require_permissions({ show: 'ai_agents.read', revisions: 'ai_agents.read', revision: 'ai_agents.read',
+  READ_ACTIONS = %w[show revisions revision metrics].freeze
+  require_permissions({ show: 'ai_agents.read', revisions: 'ai_agents.read', revision: 'ai_agents.read', metrics: 'ai_agents.read',
                         create_revision: 'ai_agents.update', publish: 'ai_agents.update', restore: 'ai_agents.update' })
   before_action :load_profile
   before_action :require_admin, except: READ_ACTIONS
@@ -19,6 +19,11 @@ class Api::V1::VetorialAgentsController < Api::V1::BaseController
 
   def revisions
     render json: { success: true, data: @deployment.revisions.order(number: :desc).limit(100).map { |r| revision_view(r, text: false) } }
+  end
+
+  def metrics
+    data = VetorialAgent::Metrics.new(@deployment, source: params[:source], from: params[:from], to: params[:to]).call
+    render json: { success: true, data: data }
   end
 
   def revision

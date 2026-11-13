@@ -42,6 +42,7 @@ Rails.application.routes.draw do
       get 'agent_catalog', to: 'agent_catalog#index'
       resources :vetorial_agents, only: [:show] do
         member do
+          get 'metrics', action: :metrics
           get 'revisions', action: :revisions
           post 'revisions', action: :create_revision
           get 'revisions/:revision_id', action: :revision
@@ -781,6 +782,7 @@ Rails.application.routes.draw do
   post 'webhooks/evolution_hub', to: 'webhooks/evolution_hub#create'
 
   get 'internal/vetorial_agent/config/:deployment_id', to: 'internal/vetorial_agent_configuration#show'
+  post 'internal/vetorial_agent/telemetry', to: 'internal/vetorial_agent_telemetry#create'
   get 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#show'
   post 'internal/vetorial_agent/:conversation_id', to: 'internal/vetorial_agent#create'
 
