@@ -1,7 +1,7 @@
 class Api::V1::VetorialAgentsController < Api::V1::BaseController
   READ_ACTIONS = %w[show revisions revision metrics integrations].freeze
   require_permissions({ show: 'ai_agents.read', revisions: 'ai_agents.read', revision: 'ai_agents.read', metrics: 'ai_agents.read', integrations: 'ai_agents.read',
-                        create_revision: 'ai_agents.update', publish: 'ai_agents.update', restore: 'ai_agents.update' })
+                        activation_challenges: 'ai_agents.update', activation: 'ai_agents.update', binding: 'ai_agents.update', create_revision: 'ai_agents.update', publish: 'ai_agents.update', restore: 'ai_agents.update' })
   before_action :load_profile
   before_action :require_admin, except: READ_ACTIONS
   rescue_from VetorialAgent::Configuration::Conflict, ActiveRecord::StaleObjectError do
@@ -9,6 +9,37 @@ class Api::V1::VetorialAgentsController < Api::V1::BaseController
   end
   rescue_from VetorialAgent::Snapshot::Invalid, ArgumentError do
     render json: { success: false, error: { code: 'invalid_configuration', message: 'Revise a configuração informada.' } }, status: :unprocessable_entity
+  end
+
+  def activation_challenges
+    render json: { success: true, data: VetorialAgent::Activation.new(@profile, actor_id: Current.user.id).challenge }
+  end
+
+  def activation
+    input = params.permit(:mode, :nonce, :phrase, :confirm, allowlist: [], internal_numbers: []).to_h
+    mutate('activation', input) do |_service|
+      revision_view(VetorialAgent::Activation.new(@profile, actor_id: Current.user.id).apply(input))
+    end
+  end
+
+  def binding
+    return head :forbidden unless has_user_permission?(Current.user.id, 'pipelines.read')
+    input = params.require(:binding).permit(:agent_bot_id, :pipeline_id, inbox_ids: []).to_h
+    mutate('binding', input) do |service|
+      raise VetorialAgent::Configuration::Conflict unless @deployment.control_source == 'crm'
+      raise ArgumentError unless input.keys.sort == %w[agent_bot_id inbox_ids pipeline_id].sort && input['agent_bot_id'] == @deployment.agent_bot_id
+      raise ArgumentError unless input['inbox_ids'].is_a?(Array) && input['inbox_ids'].size == 1
+      inbox = Current.user.assigned_inboxes.find(input['inbox_ids'].sole)
+      inbox.with_lock do
+        # HTTP only reuses an attached native binding; creation stays boot/inventory gated.
+        raise VetorialAgent::Configuration::Conflict unless inbox.agent_bot_inbox&.agent_bot_id == @deployment.agent_bot_id
+        raise ArgumentError unless inbox.channel.is_a?(Channel::Whatsapp) && inbox.channel.evolution_attached?
+        Pipeline.find(input['pipeline_id']) if input['pipeline_id'].present?
+        payload = @deployment.payload.deep_dup
+        payload['binding'] = input
+        revision_view(service.replace(payload))
+      end
+    end
   end
 
   def show

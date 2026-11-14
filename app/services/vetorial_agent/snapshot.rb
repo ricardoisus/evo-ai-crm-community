@@ -57,7 +57,18 @@ module VetorialAgent::Snapshot
     raise Invalid unless behavior.keys.sort == (bounds.keys + %w[timezone office_hours]).sort
     bounds.each { |key, range| raise Invalid unless behavior[key].is_a?(Integer) && range.cover?(behavior[key]) }
     raise Invalid unless behavior['timezone'] == 'America/Sao_Paulo'
-    # Scheduling windows require a separate validated implementation before enabling.
-    raise Invalid unless behavior['office_hours'] == { 'enabled' => false, 'windows' => [] }
+    hours = behavior['office_hours']
+    raise Invalid unless hours.is_a?(Hash) && hours.keys.sort == %w[enabled windows] && [true, false].include?(hours['enabled']) && hours['windows'].is_a?(Array)
+    windows = hours['windows']
+    raise Invalid if hours['enabled'] && windows.empty?
+    raise Invalid if !hours['enabled'] && windows.any?
+    windows.each do |window|
+      raise Invalid unless window.is_a?(Hash) && window.keys.sort == %w[end start weekday] && (0..6).include?(window['weekday'])
+      raise Invalid unless %w[start end].all? { |key| window[key].is_a?(String) && window[key].match?(/\A(?:[01]\d|2[0-3]):[0-5]\d\z/) }
+      raise Invalid unless window['start'] < window['end']
+    end
+    windows.group_by { |window| window['weekday'] }.each_value do |day|
+      day.sort_by { |window| window['start'] }.each_cons(2) { |a, b| raise Invalid if a['end'] > b['start'] }
+    end
   end
 end

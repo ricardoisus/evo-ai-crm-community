@@ -29,10 +29,9 @@ class Api::V1::VetorialConversationControlsController < Api::V1::BaseController
   end
 
   def control(action)
-    # Removing a human requires the pre-existing assignment permission too.
-    # Until that grant is wired/tested, this API never clears an assignee.
-    return head :forbidden if params[:clear_assignee] == true
-    data = VetorialAgent::ConversationControl.call(@conversation, action: action, version: params.require(:version), actor_id: Current.user.id)
+    clear = params[:clear_assignee] == true
+    return head :forbidden if clear && !has_user_permission?(Current.user.id, 'conversations.update')
+    data = VetorialAgent::ConversationControl.call(@conversation, action: action, version: params.require(:version), actor_id: Current.user.id, clear_assignee: clear)
     render json: { success: true, data: data }
   end
 end

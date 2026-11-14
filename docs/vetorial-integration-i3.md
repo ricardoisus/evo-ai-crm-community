@@ -100,3 +100,32 @@ canaries, plus OpenAI/Groq/Bearer patterns. Integration DTOs reject any full E.1
 Operational private snapshots retain the allowlists needed to execute the existing
 contract; this sweep does not remove legitimate configuration data or scan unrelated
 customer/contact APIs. Malicious provider fields and stale/poisoned statuses are tested.
+
+### J9 — operational controls (synthetic acceptance, 2026-11-13)
+
+Admin plus `ai_agents.update` and every bound inbox are required for challenge,
+activation and binding. `POST /api/v1/vetorial_agents/:id/activation_challenges`
+returns `nonce`, `expires_in: 60`, `phrase`. PUT `activation` accepts `mode`, optional
+shared `allowlist`/`internal_numbers`; all requires `nonce`, exact typed
+`phrase: ATIVAR PARA TODOS`, and boolean `confirm: true`. Challenges are persisted
+in audits, scoped to actor/profile/published hash, and consumed within the same
+transaction as revision/epoch publication. Expiration, invalid scope or confirmation
+returns 422; CAS conflict is 409. Mutations require If-Match and Idempotency-Key;
+replaying a successful identical request returns its stored result without another
+publication. Pilot needs a nonempty E.164 allowlist. Other role and human pauses
+are preserved. During legacy transition only off without list edits is permitted.
+
+PUT `binding` accepts the complete `binding` object, including nullable pipeline_id.
+It also requires `pipelines.read`, an inbox visible to the actor, a locally attached
+Evolution WhatsApp channel and an existing matching AgentBotInbox. It cannot create
+or replace a native association: initial attachment still requires the separate
+boot/task-inventory verified command. Pipeline existence is checked under the
+installation's existing global pipeline permission. No Evolution calls are made.
+
+Office hours are edited through draft/publish: enabled windows are required,
+nonoverlapping, same-day `HH:MM` intervals, with `weekday` 0 (Monday) through 6.
+Timezone stays America/Sao_Paulo; disabled hours require an empty array.
+Explicit boolean `clear_assignee: true` on resume uses the existing native assignment
+grant, `conversations.update`; no new Auth permission is invented. It clears only
+the assignee and preserves commercial status/read state. Without the choice a human
+assignee causes 409. The all-mode acceptance tests use synthetic data exclusively.

@@ -24,6 +24,17 @@ class VetorialAgent::Configuration
     end
   end
 
+  # Caller holds the deployment lock; operational changes publish one whole bundle.
+  def replace(payload)
+    number = (@deployment.revisions.maximum(:number) || 0) + 1
+    payload.merge!('revision' => number, 'policy_epoch' => @deployment.policy_epoch + 1)
+    VetorialAgent::Snapshot.validate!(payload)
+    revision = @deployment.revisions.create!(number: number, status: 'published', published_at: Time.current,
+      payload: payload, sha256: VetorialAgent::Snapshot.digest(payload), created_by_id: @actor_id)
+    @deployment.update!(active_revision: revision, policy_epoch: payload['policy_epoch'])
+    revision
+  end
+
   def draft(payload, restored_from_id: nil)
     raise Conflict unless @deployment.control_source == 'crm'
     payload = payload.deep_dup
