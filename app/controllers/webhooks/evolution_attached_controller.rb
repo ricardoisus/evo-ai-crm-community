@@ -6,7 +6,7 @@ class Webhooks::EvolutionAttachedController < ActionController::API
     return head :unauthorized unless authenticated?(channel)
     return head :conflict unless channel.provider_config['attachment_state'].in?(%w[pending active])
 
-    Webhooks::EvolutionAttachedJob.perform_later(channel.id, params.permit!.to_h.slice('instance', 'event', 'data'))
+    Webhooks::EvolutionAttachedJob.perform_later(channel.id, params.permit!.to_h.slice('instance', 'event', 'data', 'type').merge('lead_automation_received_at' => Time.current.iso8601(6)))
     head :ok
   end
 

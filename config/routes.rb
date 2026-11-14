@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  match '/public/lead_automation_rules/:id/leads', to: 'public/lead_automation_leads#create', via: [:post, :options]
   post '/internal/instagram-amh/associate', to: 'instagram_amh_link_associations#create'
   post '/internal/instagram-amh/resolve', to: 'instagram_amh_link_resolutions#create'
   get '/health/live', to: 'health#live'

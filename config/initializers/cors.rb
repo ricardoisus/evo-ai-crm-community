@@ -3,7 +3,17 @@
 
 # font cors issue with CDN
 # Ref: https://stackoverflow.com/questions/56960709/rails-font-cors-policy
-Rails.application.config.middleware.insert_before 0, Rack::Cors do
+# Rack::Cors short-circuits every preflight with 200, even without a matching
+# resource. This endpoint needs database-backed exact-origin validation and 403.
+class LeadIntakeAwareCors < Rack::Cors
+  def call(env)
+    return @app.call(env) if env['PATH_INFO'].to_s.match?(%r{\A/public/lead_automation_rules/[^/]+/leads\z})
+
+    super
+  end
+end
+
+Rails.application.config.middleware.insert_before 0, LeadIntakeAwareCors do
   # Get CORS origins from environment variable
   cors_origins = ENV.fetch('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://localhost:8080').split(',')
 

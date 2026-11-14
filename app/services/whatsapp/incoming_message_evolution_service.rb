@@ -8,7 +8,7 @@ class Whatsapp::IncomingMessageEvolutionService < Whatsapp::IncomingMessageBaseS
     event_type = processed_params[:event]
 
     Rails.logger.info "Evolution API: Processing event #{event_type} for instance #{processed_params[:instance]}"
-    Rails.logger.debug { "Evolution API: Full payload: #{processed_params.inspect}" }
+    # Acquisition identifiers and message bodies must not enter application logs.
 
     case event_type
     when 'messages.upsert'

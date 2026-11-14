@@ -31,6 +31,8 @@
 #  fk_rails_...  (pipeline_stage_id => pipeline_stages.id)
 #
 class PipelineItem < ApplicationRecord
+  attr_accessor :lead_automation_context
+
   LABEL_UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
 
   include Wisper::Publisher
@@ -522,6 +524,8 @@ class PipelineItem < ApplicationRecord
   end
 
   def dispatch_initial_stage_event
+    return if lead_automation_context
+
     Rails.configuration.dispatcher.dispatch(
       'pipeline_stage_updated',
       Time.zone.now,
@@ -537,6 +541,8 @@ class PipelineItem < ApplicationRecord
   # change). Resolves the from/to ids from the dirty-tracking attribute API,
   # which remains valid in the *_commit lifecycle.
   def broadcast_stage_update_to_evo_flow
+    return if lead_automation_context
+
     old_stage_id, new_stage_id =
       if saved_change_to_pipeline_stage_id?
         saved_change_to_pipeline_stage_id
@@ -555,6 +561,8 @@ class PipelineItem < ApplicationRecord
 
   # Wisper event publishers (for EvoCampaign integration)
   def publish_pipeline_item_created
+    return if lead_automation_context
+
     publish(:pipeline_item_created, data: { pipeline_item: self, api_access_token: Current.api_access_token })
 
     # Also dispatch via event dispatcher for webhooks
@@ -566,6 +574,8 @@ class PipelineItem < ApplicationRecord
   end
 
   def publish_pipeline_item_updated
+    return if lead_automation_context
+
     return unless saved_changes.any?
 
     publish(:pipeline_item_updated, data: {

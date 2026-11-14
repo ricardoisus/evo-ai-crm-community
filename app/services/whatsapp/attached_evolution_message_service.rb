@@ -55,7 +55,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
       'evolution_origin' => incoming? ? 'contact' : 'human_device'
     )
     attach_observed_media if media_attachment?
-    @message.save!
+    LeadAutomations::CaptureEvent.persist_message(@message, raw: @raw_message, inbox: inbox, params: params)
   end
 
   def historical?

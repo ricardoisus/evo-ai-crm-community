@@ -1,4 +1,12 @@
 class LeadAutomationEvent < ApplicationRecord
+  after_create_commit :enqueue_processing
+
+  def enqueue_processing
+    LeadAutomations::ProcessEventJob.perform_later(id)
+  rescue StandardError
+    Rails.logger.warn("[LEAD_AUTOMATION] enqueue_failed")
+  end
+
   validates :contact_id, :source_key, :occurred_at, :received_at, presence: true
   validates :source_key, uniqueness: true, length: { maximum: 200 }
   validates :contact_id, uniqueness: true

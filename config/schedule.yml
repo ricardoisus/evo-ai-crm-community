@@ -93,3 +93,8 @@ vetorial_agent_outbox_recovery:
   cron: "* * * * *"
   class: "VetorialAgent::DispatchJob"
   queue: high
+
+lead_automations_sweep_job:
+  cron: '* * * * *'
+  class: 'LeadAutomations::SweepJob'
+  queue: scheduled_jobs
