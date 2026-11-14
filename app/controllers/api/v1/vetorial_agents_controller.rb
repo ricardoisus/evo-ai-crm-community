@@ -1,14 +1,41 @@
 class Api::V1::VetorialAgentsController < Api::V1::BaseController
-  READ_ACTIONS = %w[show revisions revision metrics integrations].freeze
-  require_permissions({ show: 'ai_agents.read', revisions: 'ai_agents.read', revision: 'ai_agents.read', metrics: 'ai_agents.read', integrations: 'ai_agents.read',
+  READ_ACTIONS = %w[show revisions revision metrics integrations test_session].freeze
+  require_permissions({ test_session: 'ai_agents.read', create_test_session: 'ai_agents.update', test_message: 'ai_agents.update', close_test_session: 'ai_agents.update', show: 'ai_agents.read', revisions: 'ai_agents.read', revision: 'ai_agents.read', metrics: 'ai_agents.read', integrations: 'ai_agents.read',
                         activation_challenges: 'ai_agents.update', activation: 'ai_agents.update', binding: 'ai_agents.update', create_revision: 'ai_agents.update', publish: 'ai_agents.update', restore: 'ai_agents.update' })
   before_action :load_profile
-  before_action :require_admin, except: READ_ACTIONS
+  before_action :require_admin, except: READ_ACTIONS + %w[create_test_session test_message close_test_session]
   rescue_from VetorialAgent::Configuration::Conflict, ActiveRecord::StaleObjectError do
     render json: { success: false, error: { code: 'conflict', message: 'A configuração mudou. Atualize a página.' } }, status: :conflict
   end
   rescue_from VetorialAgent::Snapshot::Invalid, ArgumentError do
     render json: { success: false, error: { code: 'invalid_configuration', message: 'Revise a configuração informada.' } }, status: :unprocessable_entity
+  end
+
+  rescue_from VetorialAgent::TestSessions::Limit do
+    render json: { success: false, error: { code: 'test_limit', message: 'Limite do teste atingido' } }, status: :too_many_requests
+  end
+  rescue_from VetorialAgent::TestSessions::Unavailable do
+    render json: { success: false, error: { code: 'test_unavailable', message: 'Teste indisponível. Consulte a sessão antes de tentar novamente.' } }, status: :service_unavailable
+  end
+  rescue_from VetorialAgent::TestSessions::Conflict do
+    render json: { success: false, error: { code: 'conflict', message: 'Requisição de teste conflitante.' } }, status: :conflict
+  end
+
+  def create_test_session
+    input = params.permit(:revision_id, :purpose, :criteria, :sample_count, :budget_usd, :max_turns).to_h
+    render json: { success: true, data: test_service.create(input, request.headers['Idempotency-Key']) }
+  end
+
+  def test_session
+    render json: { success: true, data: test_service.show(scoped_test_session) }
+  end
+
+  def test_message
+    render json: { success: true, data: test_service.turn(scoped_test_session, params[:text], request.headers['Idempotency-Key']) }
+  end
+
+  def close_test_session
+    render json: { success: true, data: test_service.close(scoped_test_session) }
   end
 
   def activation_challenges
@@ -82,6 +109,16 @@ class Api::V1::VetorialAgentsController < Api::V1::BaseController
   end
 
   private
+
+  def test_service
+    VetorialAgent::TestSessions.new(@profile, Current.user)
+  end
+
+  def scoped_test_session
+    scope = VetorialAgent::TestSession.where(profile: @profile)
+    scope = scope.where(owner: Current.user) unless Current.user.administrator?
+    scope.find(params[:session_id])
+  end
 
   def load_profile
     @profile = VetorialAgent::Profile.find(params[:id])

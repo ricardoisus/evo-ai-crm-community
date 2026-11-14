@@ -129,3 +129,13 @@ Explicit boolean `clear_assignee: true` on resume uses the existing native assig
 grant, `conversations.update`; no new Auth permission is invented. It clears only
 the assignee and preserves commercial status/read state. Without the choice a human
 assignee causes 409. The all-mode acceptance tests use synthetic data exclusively.
+
+## J10 — sessões de teste
+
+`POST /api/v1/vetorial_agents/:id/test_sessions` recebe `revision_id` (inclusive draft), propósito, critério, amostra 3–5, `budget_usd` decimal (padrão 0.05, máximo 0.50), `max_turns` (1–20) e Idempotency-Key. GET `.../:session_id`, POST `.../:session_id/messages` (`text`, chave UUID) e POST `.../:session_id/close` respeitam dono/admin, grant read/update e todas as caixas do perfil. Criação não chama modelo. Revisão/hash/snapshot são congelados, inclusive se o draft mudar depois. Sessão dura 30min; fechamento não libera reserva incerta.
+
+Única autoridade financeira: `sandbox_budgets/sessions/calls` no runtime. Rails guarda autorização, plano e transcrição sintética, sem ledger financeiro; valores exibidos vêm do runtime. Ponte privada HMAC por método/caminho: POST `/test_sessions/manage` (create/show/close) e `/test_sessions/:uuid/turns`. UUID de sessão nasce no CRM e reentrega da criação não aloca duas vezes. Intent unknown é commitado antes do HTTP; retry da mensagem mantém UUID, texto e reserva; ACK perdido não autoriza nova chamada cega.
+
+Nesta etapa só existe `simulation`, US$0, com `SimulationModel` sem cliente HTTP/chave. Usa montagem de prompt/modelo e validação de saída do OpenAI real, para ambos os papéis; resposta é identificada como simulação. Browser não escolhe modo, destinatário, URL ou credenciais. Estimador offline usa tarifa versionada, limite integral do contexto serializado/saída e UTF-8/escaping conservadores antes de construir o modelo; configuração sem limite confiável recusa 429. Não há mídia/rede nem ferramentas live neste transporte. Adaptadores FakeCRM/FakeAgenda/NoopTransport e histórico são isolados de quota 20/h e métricas live. Ativar inferência paga não faz parte desta implementação/autorização.
+
+Validação integrada opcional: com runtime sintético HTTP local, `VETORIAL_TEST_HTTP_URL=http://127.0.0.1:58991` junto ao comando RSpec normal inclui o teste real HMAC. Secret exclusivo sintético `synthetic-j10-secret-` repetido três vezes; nunca usar secret de produção. Runtime criado com `create_app(Store(sqlite_temporario), Policy('synthetic', frozenset()), secret_sintetico)` e DDL só no banco temporário.

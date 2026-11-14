@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_13_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1603,6 +1603,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_100000) do
     t.index ["event_id"], name: "index_vetorial_agent_telemetry_events_on_event_id", unique: true
   end
 
+  create_table "vetorial_agent_test_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "profile_id", null: false
+    t.uuid "owner_id", null: false
+    t.uuid "revision_id", null: false
+    t.string "idempotency_key", null: false
+    t.string "input_sha256", null: false
+    t.string "sha256", null: false
+    t.jsonb "plan", default: {}, null: false
+    t.jsonb "messages", default: [], null: false
+    t.string "state", default: "pending", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_id"], name: "index_vetorial_agent_test_sessions_on_owner_id"
+    t.index ["profile_id", "owner_id", "idempotency_key"], name: "vetorial_test_creation_key", unique: true
+    t.index ["profile_id"], name: "index_vetorial_agent_test_sessions_on_profile_id"
+    t.index ["revision_id"], name: "index_vetorial_agent_test_sessions_on_revision_id"
+  end
+
   create_table "vetorial_agent_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "deployment_id", null: false
     t.uuid "call_id", null: false
@@ -1716,5 +1735,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_100000) do
   add_foreign_key "vetorial_agent_runtime_statuses", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_states", "conversations"
   add_foreign_key "vetorial_agent_telemetry_events", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_test_sessions", "users", column: "owner_id"
+  add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_profiles", column: "profile_id"
+  add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_revisions", column: "revision_id"
   add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
 end

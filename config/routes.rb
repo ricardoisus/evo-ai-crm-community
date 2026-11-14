@@ -42,6 +42,10 @@ Rails.application.routes.draw do
       get 'agent_catalog', to: 'agent_catalog#index'
       resources :vetorial_agents, only: [:show] do
         member do
+          post 'test_sessions', action: :create_test_session
+          get 'test_sessions/:session_id', action: :test_session
+          post 'test_sessions/:session_id/messages', action: :test_message
+          post 'test_sessions/:session_id/close', action: :close_test_session
           post 'activation_challenges', action: :activation_challenges
           put 'activation', action: :activation
           put 'binding', action: :binding
