@@ -120,7 +120,10 @@ class VetorialAgent::Telemetry
       deployment.usages.create!(event.slice(*FIELDS['usage']).merge(occurred_at: occurred_at))
     when 'heartbeat'
       status = VetorialAgent::RuntimeStatus.find_or_initialize_by(deployment: deployment, instance_id: event['instance_id'])
-      status.update!(revision: event['revision'], policy_epoch: event['policy_epoch'], sha256: event['sha256'],
+      return if status.persisted? && status.heartbeat_at >= occurred_at
+
+      applied = deployment.revisions.find_by(number: event['revision'], sha256: event['sha256'])
+      status.update!(applied_revision_id: applied&.id, revision: event['revision'], policy_epoch: event['policy_epoch'], sha256: event['sha256'],
                      integrations: event['integrations'], heartbeat_at: occurred_at)
     end
   end

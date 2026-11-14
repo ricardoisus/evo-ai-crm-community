@@ -130,4 +130,42 @@ RSpec.describe 'Internal Vetorial telemetry API', type: :request do
       expect(deployment.reload.runtime_statuses.first).to have_attributes(revision: 1, policy_epoch: 1, sha256: 'a' * 64)
     end
   end
+
+  it 'derives health from applied ack and heartbeat age, ignoring late redelivery' do
+    travel_to Time.utc(2026, 11, 13, 12) do
+      payload = JSON.parse(File.read(Rails.root.join('spec/fixtures/vetorial_agent/snapshot.json')))['payload']
+      payload['deployment_id'] = deployment.id
+      revision = deployment.revisions.create!(number: 1, payload: payload,
+        sha256: VetorialAgent::Snapshot.digest(payload), status: 'published')
+      deployment.update!(active_revision: revision, policy_epoch: payload['policy_epoch'])
+      profile = deployment.profiles.create!(role: 'atendimento', name: 'Synthetic heartbeat')
+      view = -> { VetorialAgent::ProfileView.summary(profile) }
+      expect(view.call[:health]).to eq('unavailable')
+      event = heartbeat(occurred_at: Time.current).merge(sha256: revision.sha256, policy_epoch: deployment.policy_epoch)
+      post_events([event], key: 'healthy-ack')
+      expect(response).to have_http_status(:ok)
+      expect(view.call).to include(health: 'healthy', applied_revision: revision.id, applied_version: 1)
+      travel 45.seconds
+      expect(view.call[:health]).to eq('healthy')
+      travel 1.second
+      expect(view.call[:health]).to eq('delayed')
+      travel 44.seconds
+      expect(view.call[:health]).to eq('delayed')
+      travel 1.second
+      expect(view.call[:health]).to eq('unavailable')
+
+      divergent = event.merge(event_id: SecureRandom.uuid, occurred_ms: (Time.current.to_f * 1000).to_i, revision: 2)
+      post_events([divergent], key: 'divergent-ack')
+      expect(view.call).to include(health: 'awaiting_configuration', applied_version: 2, desired_version: 1, applied_revision: nil)
+      late = event.merge(event_id: SecureRandom.uuid)
+      post_events([late], key: 'late-heartbeat')
+      expect(view.call[:applied_version]).to eq(2)
+      epoch = event.merge(event_id: SecureRandom.uuid, occurred_ms: ((Time.current.to_f + 1) * 1000).to_i,
+                          policy_epoch: deployment.policy_epoch + 1)
+      travel 1.second
+      post_events([epoch], key: 'divergent-epoch')
+      expect(view.call[:health]).to eq('awaiting_configuration')
+    end
+  end
+
 end
