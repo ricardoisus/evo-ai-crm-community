@@ -299,6 +299,14 @@ Rails.application.routes.draw do
         end
       end
 
+      resources :lead_automation_rules do
+        member do
+          patch :activation
+          post :test
+          get :runs
+          post :rotate_token
+        end
+      end
       resources :automation_rules, only: [:index, :create, :show, :update, :destroy], controller: 'automation_rules' do
         post :clone, on: :member
         get :runs, on: :member
