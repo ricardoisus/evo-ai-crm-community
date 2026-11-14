@@ -195,7 +195,7 @@ class Inbox < ApplicationRecord
     return default_conversation_status.to_sym if default_conversation_status.present?
 
     # Legacy behavior: if inbox has active bot, default to pending
-    return :pending if active_bot?
+    return :pending if active_bot? && !VetorialAgent::Deployment.managed_bot?(agent_bot_inbox&.agent_bot_id)
 
     # Default to open for new conversations
     :open

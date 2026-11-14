@@ -8,11 +8,17 @@ module VetorialAgent::Policy
   end
 
   def self.scoped?(conversation)
+    managed = VetorialAgent::Deployment.for_conversation(conversation)
+    return true if managed
+
     ENV['VETORIAL_AGENT_INBOX_ID'].present? && conversation.inbox_id.to_s == ENV['VETORIAL_AGENT_INBOX_ID'] &&
       conversation.inbox.channel.is_a?(Channel::Whatsapp) && conversation.inbox.channel.evolution_attached?
   end
 
   def self.eligible?(conversation)
+    managed = VetorialAgent::Deployment.for_conversation(conversation)
+    return managed.eligible?(conversation) if managed
+
     phone = conversation.contact.phone_number.to_s
     allowed = ENV.fetch('VETORIAL_AGENT_ALLOWLIST', '').split(',').map(&:strip).reject(&:blank?)
     internal = ENV.fetch('VETORIAL_AGENT_INTERNAL_NUMBERS', '').split(',').map(&:strip)
@@ -21,6 +27,9 @@ module VetorialAgent::Policy
 
   # The analyst has private-only capabilities; it never expands public sending permission.
   def self.analysis_eligible?(conversation)
+    managed = VetorialAgent::Deployment.for_conversation(conversation)
+    return managed.eligible?(conversation, 'analista') if managed
+
     return eligible?(conversation) unless ENV['VETORIAL_AGENT_ANALYSIS_ALL'] == 'true'
 
     phone = conversation.contact.phone_number.to_s

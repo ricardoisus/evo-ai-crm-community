@@ -12,7 +12,7 @@ class VetorialAgent::Bridge
     @conversation.with_lock do
       existing = VetorialAgent::Command.find_by(key: data['key'])
       if existing
-        raise Rejected unless existing.conversation_id == @conversation.id && existing.payload == data
+        raise Rejected unless existing.conversation_id == @conversation.id && receipt_replay?(existing, data)
 
         next existing.result.merge('status' => existing.status)
       end
@@ -28,7 +28,21 @@ class VetorialAgent::Bridge
 
   private
 
+  # A completed A14 effect retains its original payload. Promotion may add a
+  # fence to a receipt lookup, but must never recreate or alter that effect.
+  def receipt_replay?(command, data)
+    return true if command.payload == data
+    return false unless %w[sent done].include?(command.status)
+
+    fence_keys = %w[revision policy_epoch sha256]
+    deployment = VetorialAgent::Deployment.for_conversation(@conversation)
+    deployment && deployment.command_current?(data) &&
+      command.payload.except(*fence_keys) == data.except(*fence_keys)
+  end
+
   def authorized_state(data)
+    deployment = VetorialAgent::Deployment.for_conversation(@conversation)
+    raise Rejected if deployment && !deployment.command_current?(data)
     state = VetorialAgent::State.find_or_create_by!(conversation: @conversation)
     eligible = if %w[analysis analysis_media].include?(data['kind'])
                  VetorialAgent::Policy.analysis_eligible?(@conversation)

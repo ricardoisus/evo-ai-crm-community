@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1468,6 +1468,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
     t.index ["uid", "provider"], name: "index_users_on_uid_and_provider", unique: true
   end
 
+  create_table "vetorial_agent_audits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.string "action", null: false
+    t.string "idempotency_key", null: false
+    t.uuid "actor_id"
+    t.string "request_sha256", null: false
+    t.jsonb "response", default: {}, null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "action", "idempotency_key"], name: "vetorial_audit_idempotency", unique: true
+    t.index ["deployment_id"], name: "index_vetorial_agent_audits_on_deployment_id"
+  end
+
   create_table "vetorial_agent_commands", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "conversation_id", null: false
     t.string "key", null: false
@@ -1481,6 +1495,21 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
     t.index ["key"], name: "index_vetorial_agent_commands_on_key", unique: true
   end
 
+  create_table "vetorial_agent_deployments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "agent_bot_id", null: false
+    t.string "slug", null: false
+    t.uuid "active_revision_id"
+    t.integer "policy_epoch", default: 1, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.string "control_source", default: "legacy_transition", null: false
+    t.boolean "guard_ready", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_bot_id"], name: "index_vetorial_agent_deployments_on_agent_bot_id", unique: true
+    t.index ["slug"], name: "index_vetorial_agent_deployments_on_slug", unique: true
+    t.check_constraint "policy_epoch > 0 AND lock_version >= 0 AND (control_source::text = ANY (ARRAY['crm'::character varying, 'legacy_transition'::character varying]::text[]))", name: "vetorial_deployment_contract"
+  end
+
   create_table "vetorial_agent_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "conversation_id", null: false
     t.jsonb "payload", default: {}, null: false
@@ -1489,6 +1518,69 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
     t.datetime "updated_at", null: false
     t.index ["conversation_id"], name: "index_vetorial_agent_events_on_conversation_id"
     t.index ["created_at"], name: "vetorial_events_pending", where: "(delivered_at IS NULL)"
+  end
+
+  create_table "vetorial_agent_executions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "execution_id", null: false
+    t.uuid "conversation_id", null: false
+    t.string "role", null: false
+    t.string "source", null: false
+    t.integer "revision", null: false
+    t.integer "policy_epoch", null: false
+    t.string "status", null: false
+    t.bigint "latency_ms", null: false
+    t.string "outcome", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "execution_id"], name: "vetorial_execution_identity", unique: true
+    t.index ["deployment_id", "source", "occurred_at"], name: "vetorial_execution_metrics"
+    t.index ["deployment_id"], name: "index_vetorial_agent_executions_on_deployment_id"
+  end
+
+  create_table "vetorial_agent_profiles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.string "role", null: false
+    t.string "name", null: false
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "role"], name: "index_vetorial_agent_profiles_on_deployment_id_and_role", unique: true
+    t.index ["deployment_id"], name: "index_vetorial_agent_profiles_on_deployment_id"
+    t.check_constraint "role::text = ANY (ARRAY['atendimento'::character varying, 'analista'::character varying]::text[])", name: "vetorial_profile_role"
+  end
+
+  create_table "vetorial_agent_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.integer "number", null: false
+    t.jsonb "payload", null: false
+    t.string "sha256", null: false
+    t.string "status", default: "draft", null: false
+    t.uuid "created_by_id"
+    t.uuid "restored_from_id"
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id", "id"], name: "vetorial_revision_owner", unique: true
+    t.index ["deployment_id", "number"], name: "index_vetorial_agent_revisions_on_deployment_id_and_number", unique: true
+    t.index ["deployment_id"], name: "index_vetorial_agent_revisions_on_deployment_id"
+    t.check_constraint "number > 0 AND (status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])) AND sha256::text ~ '^[0-9a-f]{64}$'::text AND jsonb_typeof(payload) = 'object'::text", name: "vetorial_revision_contract"
+  end
+
+  create_table "vetorial_agent_runtime_statuses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.string "instance_id", null: false
+    t.uuid "applied_revision_id"
+    t.string "sha256"
+    t.datetime "heartbeat_at"
+    t.jsonb "integrations", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "revision"
+    t.integer "policy_epoch"
+    t.index ["deployment_id", "instance_id"], name: "vetorial_runtime_instance", unique: true
+    t.index ["deployment_id"], name: "index_vetorial_agent_runtime_statuses_on_deployment_id"
   end
 
   create_table "vetorial_agent_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1501,6 +1593,59 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
     t.jsonb "fields", default: {}, null: false
     t.jsonb "field_values", default: {}, null: false
     t.index ["conversation_id"], name: "index_vetorial_agent_states_on_conversation_id", unique: true
+  end
+
+  create_table "vetorial_agent_telemetry_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "event_id", null: false
+    t.string "kind", null: false
+    t.string "payload_sha256", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deployment_id"], name: "index_vetorial_agent_telemetry_events_on_deployment_id"
+    t.index ["event_id"], name: "index_vetorial_agent_telemetry_events_on_event_id", unique: true
+  end
+
+  create_table "vetorial_agent_test_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "profile_id", null: false
+    t.uuid "owner_id", null: false
+    t.uuid "revision_id", null: false
+    t.string "idempotency_key", null: false
+    t.string "input_sha256", null: false
+    t.string "sha256", null: false
+    t.jsonb "plan", default: {}, null: false
+    t.jsonb "messages", default: [], null: false
+    t.string "state", default: "pending", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_id"], name: "index_vetorial_agent_test_sessions_on_owner_id"
+    t.index ["profile_id", "owner_id", "idempotency_key"], name: "vetorial_test_creation_key", unique: true
+    t.index ["profile_id"], name: "index_vetorial_agent_test_sessions_on_profile_id"
+    t.index ["revision_id"], name: "index_vetorial_agent_test_sessions_on_revision_id"
+  end
+
+  create_table "vetorial_agent_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "deployment_id", null: false
+    t.uuid "call_id", null: false
+    t.uuid "execution_id", null: false
+    t.string "source", null: false
+    t.string "provider", null: false
+    t.string "model", null: false
+    t.bigint "input_tokens", null: false
+    t.bigint "cached_tokens", null: false
+    t.bigint "output_tokens", null: false
+    t.bigint "reasoning_tokens", null: false
+    t.bigint "cost_micro_usd"
+    t.string "usage_state", null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "pricing_version"
+    t.index ["deployment_id", "call_id"], name: "vetorial_usage_identity", unique: true
+    t.index ["deployment_id", "source", "occurred_at"], name: "vetorial_usage_metrics"
+    t.index ["deployment_id"], name: "index_vetorial_agent_usages_on_deployment_id"
   end
 
   create_table "webhooks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1583,7 +1728,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_030000) do
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"
   add_foreign_key "user_roles", "users", column: "granted_by_id"
+  add_foreign_key "vetorial_agent_audits", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_commands", "conversations"
+  add_foreign_key "vetorial_agent_deployments", "agent_bots"
+  add_foreign_key "vetorial_agent_deployments", "vetorial_agent_revisions", column: "active_revision_id"
+  add_foreign_key "vetorial_agent_deployments", "vetorial_agent_revisions", column: ["id", "active_revision_id"], primary_key: ["deployment_id", "id"], name: "vetorial_active_revision_owner"
   add_foreign_key "vetorial_agent_events", "conversations"
+  add_foreign_key "vetorial_agent_executions", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_profiles", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_revisions", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_runtime_statuses", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_states", "conversations"
+  add_foreign_key "vetorial_agent_telemetry_events", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "vetorial_agent_test_sessions", "users", column: "owner_id"
+  add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_profiles", column: "profile_id"
+  add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_revisions", column: "revision_id"
+  add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
 end

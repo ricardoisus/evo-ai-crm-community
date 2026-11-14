@@ -25,6 +25,8 @@ class VetorialAgent::SendJob < ApplicationJob
   end
 
   def sendable?(command)
+    deployment = VetorialAgent::Deployment.for_conversation(command.conversation)
+    return false if deployment && !deployment.command_current?(command.payload)
     state = VetorialAgent::State.find_by!(conversation: command.conversation)
     ENV['VETORIAL_AGENT_SEND_ENABLED'] == 'true' && VetorialAgent::Policy.allowed?(command.conversation) &&
       !state.paused && state.version == command.payload['version']

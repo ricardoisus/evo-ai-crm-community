@@ -20,6 +20,7 @@ class AgentBots::InactivityCheckSchedulerJob < ApplicationJob
   private
 
   def process_agent_bot_conversations(agent_bot)
+    return if VetorialAgent::Deployment.managed_bot?(agent_bot.id)
     Rails.logger.info "[InactivityScheduler] Processing agent bot: #{agent_bot.name} (ID: #{agent_bot.id})"
 
     # Pega as inboxes que usam este bot

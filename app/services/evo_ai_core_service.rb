@@ -89,6 +89,14 @@ class EvoAiCoreService
     end
 
     # Agents endpoints (Core AI Service)
+    # Catalog-only proxy preserves the complete Core envelope and metadata.
+    def catalog_agents(params = {}, request_headers = nil)
+      response = get('/api/v1/agents', query: params, headers: build_headers(request_headers), timeout: 2)
+      { status: response.code, body: JSON.parse(response.body) }
+    rescue JSON::ParserError, Timeout::Error, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, EOFError
+      { status: 503, body: nil }
+    end
+
     def list_agents(params = {}, request_headers = nil)
       url = "/api/v1/agents"
       Rails.logger.info "EvoAiCoreService.list_agents - Params: #{params}"
@@ -98,7 +106,7 @@ class EvoAiCoreService
         headers: build_headers(request_headers)
       })
 
-      Rails.logger.info "EvoAiCoreService.list_agents - Response code: #{response.code}, Body: #{response.body[0..500]}"
+      Rails.logger.info "EvoAiCoreService.list_agents - Response code: #{response.code}"
       handle_response(response)
     end
 
