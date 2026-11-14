@@ -23,6 +23,8 @@ RSpec.describe Api::V1::GlobalConfigController, type: :controller do
         instagramAppId googleOAuthClientId azureAppId
         hasFacebookConfig hasWhatsappConfig hasInstagramConfig
         hasEvolutionConfig hasEvolutionGoConfig hasTwitterConfig
+        hasEvolutionHubConfig evolutionHubEnabled hubAllowExistingChannels
+        evoFlowConfigured evoFlowProxyConfigured evoFlowPublicUrl
         openaiConfigured enableAccountSignup recaptchaSiteKey clarityProjectId
       ]
 
@@ -98,6 +100,37 @@ RSpec.describe Api::V1::GlobalConfigController, type: :controller do
           get :show, format: :json
           json = JSON.parse(response.body)
           expect(json[flag]).to be false
+        end
+      end
+    end
+
+    context 'optional Flow configuration' do
+      before do
+        allow(ENV).to receive(:[]).and_call_original
+        %w[EVO_FLOW_PUBLIC_URL EVO_FLOW_API_URL AUTH_APIKEY_INTEGRATION_LOCAL].each do |key|
+          allow(ENV).to receive(:[]).with(key).and_return(nil)
+        end
+      end
+
+      it 'does not mistake the internal default for configured Flow' do
+        get :show, format: :json
+        expect(JSON.parse(response.body)).to include('evoFlowConfigured' => false, 'evoFlowProxyConfigured' => false, 'evoFlowPublicUrl' => nil)
+      end
+
+      it 'reports explicitly configured public and proxy services without exposing secrets' do
+        allow(ENV).to receive(:[]).with('EVO_FLOW_PUBLIC_URL').and_return('https://flow.example.test')
+        allow(ENV).to receive(:[]).with('EVO_FLOW_API_URL').and_return('http://internal-flow:3334/api/v1')
+        allow(ENV).to receive(:[]).with('AUTH_APIKEY_INTEGRATION_LOCAL').and_return('synthetic-secret')
+        get :show, format: :json
+        expect(JSON.parse(response.body)).to include('evoFlowConfigured' => true, 'evoFlowProxyConfigured' => true, 'evoFlowPublicUrl' => 'https://flow.example.test')
+        expect(response.body).not_to include('synthetic-secret', 'internal-flow')
+      end
+
+      ['', 'PLACEHOLDER', 'undefined', '/flow', 'ftp://flow.test', 'https://u:p@flow.test', 'https://flow.test?token=x', 'https://flow.test#x'].each do |url|
+        it "rejects invalid or sensitive public URL #{url.inspect}" do
+          allow(ENV).to receive(:[]).with('EVO_FLOW_PUBLIC_URL').and_return(url)
+          get :show, format: :json
+          expect(JSON.parse(response.body)).to include('evoFlowConfigured' => false, 'evoFlowPublicUrl' => nil)
         end
       end
     end
