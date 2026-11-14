@@ -139,3 +139,30 @@ assignee causes 409. The all-mode acceptance tests use synthetic data exclusivel
 Nesta etapa só existe `simulation`, US$0, com `SimulationModel` sem cliente HTTP/chave. Usa montagem de prompt/modelo e validação de saída do OpenAI real, para ambos os papéis; resposta é identificada como simulação. Browser não escolhe modo, destinatário, URL ou credenciais. Estimador offline usa tarifa versionada, limite integral do contexto serializado/saída e UTF-8/escaping conservadores antes de construir o modelo; configuração sem limite confiável recusa 429. Não há mídia/rede nem ferramentas live neste transporte. Adaptadores FakeCRM/FakeAgenda/NoopTransport e histórico são isolados de quota 20/h e métricas live. Ativar inferência paga não faz parte desta implementação/autorização.
 
 Validação integrada opcional: com runtime sintético HTTP local, `VETORIAL_TEST_HTTP_URL=http://127.0.0.1:58991` junto ao comando RSpec normal inclui o teste real HMAC. Secret exclusivo sintético `synthetic-j10-secret-` repetido três vezes; nunca usar secret de produção. Runtime criado com `create_app(Store(sqlite_temporario), Policy('synthetic', frozenset()), secret_sintetico)` e DDL só no banco temporário.
+
+## J11 — catálogo C2 e matriz dos contratos
+
+O catálogo retorna o envelope completo do Core em `data.native`, sem alterar dados, paginação, filtros AND/OR ou meta. `data.managed` é um grupo fixo, ordenado, com os perfis da caixa autorizada em todas as páginas; busca/modo/saúde/origem são aplicados no servidor. Pasta oculta os gerenciados. O total da interface é `native.meta.total + managed.length` (usando o campo de total original do Core). Origem runtime não consulta o Core; Core indisponível retorna native=null e meta.partial=true/unavailable_sources=["core"]; 401/403 são propagados. Não se compõem offsets entre origens.
+
+A matriz roda como requests HTTP reais de Rails; autenticação e consulta remota de grants usam dublês, mas callbacks de permissão, escopo, validação, transações e respostas são reais. "Agente" tem os grants indicados, sem ser administrador. Sem grant resulta em 403 antes de carregar dados; fora da caixa resulta em 404 nas rotas de perfil/conversa e grupo gerenciado vazio no catálogo.
+
+| Rotas | Admin com grant | Agente com grant | Sem grant | Concorrência PostgreSQL |
+|---|---|---|---|---|
+| GET agent_catalog | 200 | 200 | 403 | Três conexões por perfil; grupo fixo, sem escrita |
+| GET perfil, revisions, revisions/:id, metrics, integrations | 200 | 200 | 403 | Três conexões por perfil; nenhuma alteração de revisão/auditoria |
+| POST activation_challenges | 200 | 403 | 403 | Admin recebe três nonces distintos; agente/sem grant recusados |
+| POST revisions e restore; publish; PUT activation e binding | Aceita entrada válida | 403 | 403 | Mesma chave: três 200 com data idêntica e uma auditoria; chaves distintas com If-Match igual: um 200/dois 409 |
+| POST test_sessions | 200 | 200 | 403 | Admin/agente: uma sessão e uma alocação para a mesma chave |
+| GET test_sessions/:id; POST messages e close | 200 para caixa/dono | 200 para dono | 403 | Admin/agente: leitura/fechamento simultâneos; mensagem repetida mantém uma entrada; runtime deduplica efeitos por request_id |
+| GET conversa/vetorial_ia; POST pause e resume | 200 | 200 | 403 | Admin/agente: leituras 200; CAS da mesma versão permite um comando e recusa dois com 409; sem grant não muda estado |
+| GET internal config e integrations | HMAC, independente de papel | HMAC, independente de papel | Sem HMAC: 401 | Três leituras HMAC simultâneas; configuração completa/integrations sem corpo |
+| POST internal telemetry | HMAC | HMAC | Sem HMAC: 401 | Matriz J6 preservada: quatro conexões, uma ingestão/auditoria por chave |
+| GET/POST internal conversa | HMAC + caixa fixa + fence | HMAC + caixa fixa + fence | Sem HMAC: 401 | Guardas/recibos da ponte preservados; sem autoridade por papel de usuário |
+
+Entradas inválidas atravessam a mesma matriz: draft com secret em limits/provider/runtime ou modelo Astra retorna 422 sem persistir nem ecoar o segredo; sessão inexistente/fora do dono retorna 404; nonce e vínculo inválidos mantêm as recusas J9. O binding concorrente usa dublê de caixa WhatsApp já anexada (sem criar vínculo nem chamar Evolution); o sandbox HTTP usa dublê HMAC do runtime, cuja concorrência financeira real é verificada em pytest/PostgreSQL.
+
+Evidências executáveis: `spec/requests/internal/vetorial_agent_{api_matrix,catalog,concurrency_matrix,assignment,activation,test_sessions,telemetry,configuration,integrations}_spec.rb` e `vetorial_agent_spec.rb`, `spec/services/vetorial_agent/{snapshot_contract,catalog_proxy,configuration,bridge}_spec.rb` e suíte runtime.
+
+O contrato fechado está em `config/vetorial_snapshot.schema.json` (fonte) e na cópia técnica idêntica `services/vetorial-agente/vetorial_agent/snapshot.schema.json` do runtime, necessária à validação independente e incluída no pacote Python. Mudanças devem atualizar os dois e conferir igualdade byte a byte. São fechados os blocos de comportamento, vínculo, ativação, integrações, limites, provedor/runtime e a linguagem de schemas/ações, incluindo keywords aninhadas e referências somente locais. Objetos vazios legados em limits/provider/runtime preservam os defaults versionados existentes; campos fornecidos têm tipo, enum e teto explícitos. IDs são identificadores opacos limitados; UUID/FKs são impostos pelo CRM. O contrato A14 completo continua válido. Ruby e Python recusam expediente sobreposto e piloto sem lista.
+
+A migração 20261113130000 impõe epoch/versão positivos, enum de origem/papel/status, número/hash/payload de revisão e FK composta que impede apontar para revisão de outro deployment. Aplicação e reversão foram exercitadas somente no banco sintético. Respostas de mutações são normalizadas para JSON antes da auditoria, mantendo a primeira resposta idêntica ao replay (inclusive timestamps).

@@ -93,7 +93,7 @@ class EvoAiCoreService
     def catalog_agents(params = {}, request_headers = nil)
       response = get('/api/v1/agents', query: params, headers: build_headers(request_headers), timeout: 2)
       { status: response.code, body: JSON.parse(response.body) }
-    rescue JSON::ParserError, Timeout::Error, SocketError
+    rescue JSON::ParserError, Timeout::Error, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, EOFError
       { status: 503, body: nil }
     end
 

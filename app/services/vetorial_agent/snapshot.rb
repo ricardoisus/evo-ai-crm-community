@@ -5,6 +5,8 @@ module VetorialAgent::Snapshot
   MODELS = %w[gpt-6-luna gpt-6.1-sol].freeze
   ROOT_KEYS = %w[schema_version deployment_id revision policy_epoch binding activation roles behavior limits integrations provider runtime].freeze
 
+  SCHEMA = JSONSchemer.schema(JSON.parse(File.read(Rails.root.join('config/vetorial_snapshot.schema.json'))))
+
   def self.canonical(value)
     case value
     when Hash
@@ -22,6 +24,7 @@ module VetorialAgent::Snapshot
 
   def self.validate!(payload)
     canonical(payload)
+    raise Invalid unless SCHEMA.valid?(payload)
     raise Invalid unless payload.keys.sort == ROOT_KEYS.sort && payload['schema_version'] == 1
     raise Invalid unless payload.values_at('revision', 'policy_epoch').all? { |v| v.is_a?(Integer) && v.positive? }
     raise Invalid unless payload['roles'].keys.sort == %w[analista atendimento]

@@ -62,4 +62,30 @@ RSpec.describe 'Managed conversation assignment grant', type: :request do
       expect(VetorialAgent::State.find_by!(conversation: conversation)).to be_paused
     end
   end
+  { admin: [true, true], agent: [false, true], denied: [false, false] }.each do |persona, (admin, permission)|
+    [[:get, ''], [:post, '/pause'], [:post, '/resume']].each do |verb, suffix|
+      it "#{persona}: #{verb} conversation control #{suffix}" do
+        allow(user).to receive(:administrator?).and_return(admin)
+        allow_any_instance_of(Api::V1::BaseController).to receive(:has_user_permission?).and_return(permission)
+        url = "/api/v1/conversations/#{conversation.id}/vetorial_ia#{suffix}"
+        if verb == :get
+          get url
+        else
+          post url, params: { version: 1, clear_assignee: true }, as: :json
+        end
+        expect(response.status).to eq(permission ? 200 : 403)
+      end
+    end
+  end
+
+  [[:get, ''], [:post, '/pause'], [:post, '/resume']].each do |verb, suffix|
+    it "hides #{verb} conversation control #{suffix} outside assigned inboxes" do
+      allow_any_instance_of(Api::V1::BaseController).to receive(:has_user_permission?).and_return(true)
+      allow(user).to receive(:assigned_inboxes).and_return(Inbox.none)
+      url = "/api/v1/conversations/#{conversation.id}/vetorial_ia#{suffix}"
+      verb == :get ? get(url) : post(url, params: { version: 1 }, as: :json)
+      expect(response.status).to eq(404)
+    end
+  end
+
 end

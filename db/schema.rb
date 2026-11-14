@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1507,6 +1507,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
     t.datetime "updated_at", null: false
     t.index ["agent_bot_id"], name: "index_vetorial_agent_deployments_on_agent_bot_id", unique: true
     t.index ["slug"], name: "index_vetorial_agent_deployments_on_slug", unique: true
+    t.check_constraint "policy_epoch > 0 AND lock_version >= 0 AND (control_source::text = ANY (ARRAY['crm'::character varying, 'legacy_transition'::character varying]::text[]))", name: "vetorial_deployment_contract"
   end
 
   create_table "vetorial_agent_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1547,6 +1548,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
     t.datetime "updated_at", null: false
     t.index ["deployment_id", "role"], name: "index_vetorial_agent_profiles_on_deployment_id_and_role", unique: true
     t.index ["deployment_id"], name: "index_vetorial_agent_profiles_on_deployment_id"
+    t.check_constraint "role::text = ANY (ARRAY['atendimento'::character varying, 'analista'::character varying]::text[])", name: "vetorial_profile_role"
   end
 
   create_table "vetorial_agent_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1560,8 +1562,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
     t.datetime "published_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["deployment_id", "id"], name: "vetorial_revision_owner", unique: true
     t.index ["deployment_id", "number"], name: "index_vetorial_agent_revisions_on_deployment_id_and_number", unique: true
     t.index ["deployment_id"], name: "index_vetorial_agent_revisions_on_deployment_id"
+    t.check_constraint "number > 0 AND (status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])) AND sha256::text ~ '^[0-9a-f]{64}$'::text AND jsonb_typeof(payload) = 'object'::text", name: "vetorial_revision_contract"
   end
 
   create_table "vetorial_agent_runtime_statuses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1728,6 +1732,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_120000) do
   add_foreign_key "vetorial_agent_commands", "conversations"
   add_foreign_key "vetorial_agent_deployments", "agent_bots"
   add_foreign_key "vetorial_agent_deployments", "vetorial_agent_revisions", column: "active_revision_id"
+  add_foreign_key "vetorial_agent_deployments", "vetorial_agent_revisions", column: ["id", "active_revision_id"], primary_key: ["deployment_id", "id"], name: "vetorial_active_revision_owner"
   add_foreign_key "vetorial_agent_events", "conversations"
   add_foreign_key "vetorial_agent_executions", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "vetorial_agent_profiles", "vetorial_agent_deployments", column: "deployment_id"

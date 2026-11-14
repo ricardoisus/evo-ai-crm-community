@@ -16,7 +16,8 @@ class VetorialAgent::Configuration
         next existing.response
       end
       raise Conflict unless expected_version.to_s == @deployment.lock_version.to_s
-      response = yield
+      # Normalize timestamps/keys before storing so the initial response equals its replay.
+      response = JSON.parse((yield).to_json)
       @deployment.touch # increments optimistic lock even for draft-only operations
       @deployment.audits.create!(action: action, idempotency_key: key, actor_id: @actor_id,
                                 request_sha256: request_hash, response: response, expires_at: 24.hours.from_now)

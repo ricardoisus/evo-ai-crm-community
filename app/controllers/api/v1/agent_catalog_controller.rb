@@ -3,9 +3,9 @@ class Api::V1::AgentCatalogController < Api::V1::BaseController
 
   def index
     ids = Current.user.assigned_inboxes.pluck(:id)
-    managed = VetorialAgent::Profile.includes(deployment: :active_revision).select do |profile|
+    managed = VetorialAgent::Profile.includes(deployment: :active_revision).order(:role, :id).select do |profile|
       payload = profile.deployment.payload
-      payload && (payload['binding']['inbox_ids'] - ids).empty?
+      payload && payload['binding']['inbox_ids'].any? && (payload['binding']['inbox_ids'] - ids).empty?
     end
     managed = [] if params[:folder_id].present? || params[:source] == 'core'
     managed = managed.map { |profile| VetorialAgent::ProfileView.summary(profile) }
