@@ -50,4 +50,35 @@ RSpec.describe Api::V1::VetorialAgentsController, type: :controller do
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body.dig('data', 'conversations')).to eq(1)
   end
+  it 'serves only closed integration states to an inbox-scoped reader, including stale and poisoned status' do
+    record = profile
+    allow(user).to receive(:assigned_inboxes).and_return(double('inbox scope', pluck: data['binding']['inbox_ids']))
+    poison = 'sk-j8-secret-canary token-j8-canary +5511987654321 https://private.invalid/auth'
+    status = VetorialAgent::RuntimeStatus.create!(deployment: deployment, instance_id: SecureRandom.uuid,
+      revision: 1, policy_epoch: 1, sha256: 'a' * 64, heartbeat_at: Time.current,
+      integrations: { openai: 'configured', groq: 'absent', calendly: 'error', google_gateway: poison, evolution: 'configured', token: poison })
+    replies = []
+    get :integrations, params: { id: record.id }
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['data']).to eq('openai' => 'configured', 'groq' => 'absent', 'calendly' => 'error',
+                                              'google_gateway' => 'error', 'evolution' => 'configured')
+    replies << response.body.dup
+    status.update!(heartbeat_at: 91.seconds.ago)
+    get :integrations, params: { id: record.id }
+    expect(response.parsed_body['data'].values.uniq).to eq(['error'])
+    replies << response.body.dup
+    status.destroy!
+    get :integrations, params: { id: record.id }
+    expect(response.parsed_body['data'].values.uniq).to eq(['error'])
+    replies << response.body.dup
+    allow(user).to receive(:assigned_inboxes).and_return(Inbox.none)
+    get :integrations, params: { id: record.id }
+    expect(response).to have_http_status(:not_found)
+    replies << response.body.dup
+    replies.each do |body|
+      poison.split.each { |value| expect(body).not_to include(value) }
+      expect(body).not_to match(/\+?55\d{10,11}/)
+    end
+  end
+
 end

@@ -9,6 +9,13 @@ class Internal::VetorialAgentConfigurationController < ActionController::API
     render json: { payload: revision.payload, sha256: revision.sha256, lease_ms: 120000 }
   end
 
+  def integrations
+    deployment = VetorialAgent::Deployment.find(params[:deployment_id])
+    state = VetorialAgent::Integrations.new(deployment).evolution
+    # No body: runtime maps HTTP status to the same closed states.
+    head({ 'configured' => :ok, 'absent' => :no_content, 'error' => :service_unavailable }.fetch(state))
+  end
+
   private
 
   def authenticate_bridge

@@ -76,3 +76,27 @@ Fontes: I2 §2 C1/C6; I1 §§2.2/9; entrega I3 §J4.
 - Guardas de listener/default/inatividade existentes preservadas. SendJob existente revalida Policy antes do transporte; teste J4 enfileira com piloto ativo e desliga durante legacy_transition: descarta sem construir transporte. Novo comando também recusado.
 - RSpec do comando J1: 36 exemplos, zero falhas, zero pendentes. Inclui ausência de flag, flag com task antiga running/starting, sucesso/idempotência com tudo novo, default/listener preservados e off na fila.
 - Sem produção, API paga ou evento real. C1 ensaio rolling completo permanece para etapa própria; não é aceite integral I3.
+
+## J8 — integration status and response privacy
+
+`GET /api/v1/vetorial_agents/:id/integrations` requires `ai_agents.read` and the same
+inbox scope as the profile. Its closed DTO contains only `openai`, `groq`, `calendly`,
+`google_gateway`, `evolution`, each `configured|absent|error`. Missing, future or
+older-than-90s heartbeats and legacy `unverified` values become `error`. No URLs,
+credentials, phones, provider bodies or exception messages are returned.
+
+Runtime probes feed the existing HMAC heartbeat. Evolution stays under CRM ownership:
+`GET /internal/vetorial_agent/integrations/:deployment_id` requires path-bound HMAC,
+uses only `ExistingInstanceClient#instances` and returns empty 200/204/503 for
+configured/absent/error. It never connects/reconnects an instance or changes a webhook.
+Apply `20261113100000_add_vetorial_pricing_version` before accepting new runtime usage.
+`pricing_version` is optional for old outboxes; the only accepted new reference is
+`2026-11-13.v1`. It records the catalog consulted, not a confirmed invoice. Usage cost
+remains `unknown/null` pending later authoritative reconciliation; retries remain immutable.
+
+The test response sweep wraps both Rails controller families, including failures,
+and rejects seeded opaque secrets, tokens, full provider phone and authenticated URL
+canaries, plus OpenAI/Groq/Bearer patterns. Integration DTOs reject any full E.164 phone.
+Operational private snapshots retain the allowlists needed to execute the existing
+contract; this sweep does not remove legitimate configuration data or scan unrelated
+customer/contact APIs. Malicious provider fields and stale/poisoned statuses are tested.

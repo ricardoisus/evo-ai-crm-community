@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_13_090000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1619,6 +1619,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_090000) do
     t.datetime "occurred_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "pricing_version"
     t.index ["deployment_id", "call_id"], name: "vetorial_usage_identity", unique: true
     t.index ["deployment_id", "source", "occurred_at"], name: "vetorial_usage_metrics"
     t.index ["deployment_id"], name: "index_vetorial_agent_usages_on_deployment_id"

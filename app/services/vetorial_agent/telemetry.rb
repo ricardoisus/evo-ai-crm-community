@@ -55,7 +55,7 @@ class VetorialAgent::Telemetry
 
     event = value.deep_stringify_keys
     kind = event['kind']
-    raise Invalid unless FIELDS.key?(kind) && event.keys.sort == (COMMON + FIELDS.fetch(kind)).sort
+    raise Invalid unless FIELDS.key?(kind) && (event.keys - (kind == 'usage' ? ['pricing_version'] : [])).sort == (COMMON + FIELDS.fetch(kind)).sort
 
     %w[event_id deployment_id].each { |key| uuid!(event[key]) }
     integer!(event['occurred_ms'])
@@ -73,6 +73,7 @@ class VetorialAgent::Telemetry
   end
 
   def validate_usage(event)
+    enum!(event['pricing_version'], ['2026-11-13.v1']) if event.key?('pricing_version')
     %w[call_id execution_id].each { |key| uuid!(event[key]) }
     %w[input_tokens cached_tokens output_tokens reasoning_tokens].each { |key| integer!(event[key]) }
     enum!(event['source'], %w[live test])
@@ -89,7 +90,7 @@ class VetorialAgent::Telemetry
     integer!(event['revision'])
     integer!(event['policy_epoch'])
     raise Invalid unless event['sha256'].is_a?(String) && event['sha256'].match?(/\A[0-9a-f]{64}\z/)
-    raise Invalid unless event['integrations'].is_a?(Hash) && event['integrations'].keys.sort == INTEGRATIONS.sort
+    raise Invalid unless event['integrations'].is_a?(Hash) && [INTEGRATIONS.sort, (INTEGRATIONS + ['evolution']).sort].include?(event['integrations'].keys.sort)
 
     event['integrations'].each_value { |value| enum!(value, %w[configured absent error unverified]) }
   end
@@ -117,7 +118,7 @@ class VetorialAgent::Telemetry
     when 'execution'
       deployment.executions.create!(event.slice(*FIELDS['execution']).merge(occurred_at: occurred_at))
     when 'usage'
-      deployment.usages.create!(event.slice(*FIELDS['usage']).merge(occurred_at: occurred_at))
+      deployment.usages.create!(event.slice(*FIELDS['usage'], 'pricing_version').merge(occurred_at: occurred_at))
     when 'heartbeat'
       status = VetorialAgent::RuntimeStatus.find_or_initialize_by(deployment: deployment, instance_id: event['instance_id'])
       return if status.persisted? && status.heartbeat_at >= occurred_at

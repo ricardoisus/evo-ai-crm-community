@@ -168,4 +168,24 @@ RSpec.describe 'Internal Vetorial telemetry API', type: :request do
     end
   end
 
+  it 'persists the version consulted for unknown usage without inventing a zero cost' do
+    event = usage(cost: nil, state: 'unknown').merge(pricing_version: '2026-11-13.v1')
+    post_events([event], key: 'j8-unknown-version')
+    expect(response).to have_http_status(:ok)
+    saved = deployment.usages.find_by!(call_id: event[:call_id])
+    expect(saved.attributes).to include('pricing_version' => '2026-11-13.v1', 'cost_micro_usd' => nil, 'usage_state' => 'unknown')
+    event[:event_id] = SecureRandom.uuid
+    event[:pricing_version] = 'sk-j8-secret-canary'
+    post_events([event], key: 'j8-invalid-version')
+    expect(response).to have_http_status(:unprocessable_entity)
+  end
+
+  it 'accepts all five probed states and exposes only their allowlisted values' do
+    event = heartbeat(occurred_at: Time.current)
+    event[:integrations] = { openai: 'configured', groq: 'absent', calendly: 'error', google_gateway: 'configured', evolution: 'error' }
+    post_events([event], key: 'j8-five-integrations')
+    expect(response).to have_http_status(:ok)
+    expect(VetorialAgent::Integrations.new(deployment).call).to eq(event[:integrations].stringify_keys)
+  end
+
 end
