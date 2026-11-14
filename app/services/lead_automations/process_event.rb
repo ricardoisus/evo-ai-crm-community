@@ -34,8 +34,8 @@ module LeadAutomations
             conversation = Conversation.find_by(id: event.conversation_id)
             e = event.signal.merge('source' => event.source, 'occurred_at' => event.occurred_at.iso8601(6),
                                    'contact_created_at' => contact.created_at.iso8601(6),
-                                   'conversation_created_at' => conversation&.created_at&.iso8601(6),
-                                   'page_url' => "https://#{event.signal['host']}/")
+                                   'conversation_created_at' => conversation&.created_at&.iso8601(6))
+            e['page_url'] = "https://#{event.signal['host']}/" if event.source == 'domain'
             decision = Matcher.call(rule, e)
             reason = decision[:reasons].first
             reason ||= 'old_event' if !rule.activated_at || event.received_at < rule.activated_at

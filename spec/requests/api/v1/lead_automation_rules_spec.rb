@@ -78,6 +78,25 @@ RSpec.describe 'Lead automation rules', type: :request do
     expect(response.parsed_body.dig('meta', 'pagination', 'per_page')).to eq(100)
   end
 
+  it 'exposes only the explicit run contract, including when attributes grow' do
+    contact = Contact.new(name: 'Synthetic')
+    contact.passive_observation = true
+    contact.skip_default_pipeline_assignment = true
+    contact.save!
+    event = LeadAutomationEvent.create!(contact_id: contact.id, source_key: SecureRandom.uuid, source: 'none', occurred_at: Time.current, received_at: Time.current)
+    run = LeadAutomationRun.create!(rule: rule, event: event, contact_id: contact.id, rule_revision: 1, status: 'skipped', source: 'none', executed_at: Time.current)
+    allow_any_instance_of(LeadAutomationRun).to receive(:attributes).and_wrap_original { |original| original.call.merge('future_private_field' => 'private') }
+    get "#{base}/#{rule.id}/runs"
+    expect(response).to have_http_status(:ok)
+    expect(data.first.keys).to match_array(%w[id rule_id event_id contact_id conversation_id deal_id rule_revision status reason_code source attempts executed_at created_at updated_at])
+    expect(data.first['id']).to eq(run.id)
+  end
+
+  it 'rejects unknown condition fields rather than silently permitting them' do
+    post base, params: payload.deep_merge(conditions: { domain: { unexpected: 'value' } }), as: :json
+    expect(response).to have_http_status(:unprocessable_entity)
+  end
+
   %w[index show create update destroy activation test runs rotate_token].each do |action|
     it "denies non-admin #{action}" do
       rule

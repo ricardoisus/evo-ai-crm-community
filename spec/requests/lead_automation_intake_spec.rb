@@ -92,6 +92,19 @@ RSpec.describe 'Public lead intake', type: :request do
     expect(LeadAutomationEvent.count).to eq(0)
   end
 
+  it 'returns 503 without writes when the Redis pool is missing' do
+    allow(LeadAutomations::IntakeRateLimit).to receive(:allowed?).and_call_original
+    original_pool = $velma
+    $velma = nil
+    count = Contact.count
+    submit
+    expect(response).to have_http_status(:service_unavailable)
+    expect(Contact.count).to eq(count)
+    expect(LeadAutomationEvent.count).to eq(0)
+  ensure
+    $velma = original_pool
+  end
+
   it 'checks the rule limit, JSON content type and size' do
     allow(LeadAutomations::IntakeRateLimit).to receive(:allowed?).with(anything, 60).and_return(false)
     submit

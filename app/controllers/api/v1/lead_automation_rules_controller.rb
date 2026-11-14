@@ -45,7 +45,11 @@ class Api::V1::LeadAutomationRulesController < Api::V1::BaseController
   def runs
     scope = @rule.runs.order(executed_at: :desc)
     scope = scope.where(status: params[:status]) if params[:status].present?
-    render_page(scope) { |run| run.attributes }
+    render_page(scope) do |run|
+      run.attributes.slice('id', 'rule_id', 'event_id', 'contact_id', 'conversation_id', 'deal_id',
+                           'rule_revision', 'status', 'reason_code', 'source', 'attempts', 'executed_at',
+                           'created_at', 'updated_at')
+    end
   end
 
   def rotate_token
@@ -90,7 +94,8 @@ class Api::V1::LeadAutomationRulesController < Api::V1::BaseController
   def rule_params
     params.permit(:name, :active, :pipeline_id, :pipeline_stage_id, :owner_id, :title_template, label_ids: [],
                   conditions: [:version, :operator, { ctwa: [:enabled, :inbox_id, :instance_name], domain: [:enabled, :host] }]).to_h.tap do |input|
-      # Keep unknown keys so model validation rejects unsupported condition versions/fields.
+      # Conditions deliberately use model validation as the strict schema boundary.
+      # Preserve unknown keys so unsupported fields are rejected, never silently ignored.
       if params.key?(:conditions)
         input['conditions'] = params[:conditions].is_a?(ActionController::Parameters) ? params[:conditions].to_unsafe_h : params[:conditions]
       end

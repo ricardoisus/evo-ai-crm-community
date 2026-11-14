@@ -55,6 +55,23 @@ RSpec.describe 'Lead acquisition execution' do
     expect(event.reload.status).to eq('processed')
   end
 
+  it 'does not pass a fabricated page URL for CTWA matching' do
+    event = ingest
+    expect(LeadAutomations::Matcher).to receive(:call).with(rule, hash_excluding('page_url')).and_call_original
+    process(event)
+    expect(rule.runs.sole.status).to eq('created')
+  end
+
+  it 'rejects unused signal metadata' do
+    event = ingest
+    %w[source_id source_url source_type].each do |key|
+      event.signal = event.signal.merge(key => 'unused')
+      expect(event).not_to be_valid
+      expect(event.errors[:signal]).to include('invalid_signal')
+      event.reload
+    end
+  end
+
   it 'captures nested image CTWA on the real attached ingress without retaining thumbnails or full payload' do
     p = payload
     ad = p[:data].delete(:contextInfo)
