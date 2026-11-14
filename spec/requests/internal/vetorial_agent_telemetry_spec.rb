@@ -126,6 +126,13 @@ RSpec.describe 'Internal Vetorial telemetry API', type: :request do
                                  cost_micro_usd: 200, month_cost_micro_usd: 200,
                                  usage_known: 2, usage_unknown: 1)
       expect(metrics[:month_cost_micro_usd]).to be_a(Integer)
+      expect(metrics[:latency]).to eq(n: 2, p50_ms: 250, p95_ms: 250)
+      expect(metrics[:recent_executions].size).to eq(6)
+      expect(metrics[:recent_executions].map { |row| row[:cost_micro_usd] }).to all(be_nil)
+      expect(metrics[:recent_executions].first.keys).to match_array(%i[role status revision occurred_at latency_ms cost_micro_usd])
+      empty = VetorialAgent::Metrics.new(deployment, source: 'test', now: Time.current).call
+      expect(empty[:latency]).to eq(n: 0, p50_ms: nil, p95_ms: nil)
+      expect(empty[:recent_executions]).to eq([])
       expect(Time.iso8601(metrics[:from])).to eq(Time.utc(2026, 11, 1, 3))
       expect(deployment.reload.runtime_statuses.first).to have_attributes(revision: 1, policy_epoch: 1, sha256: 'a' * 64)
     end

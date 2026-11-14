@@ -40,8 +40,11 @@ class VetorialAgent::Configuration
     raise Conflict unless @deployment.control_source == 'crm'
     payload = payload.deep_dup
     current = @deployment.payload
+    if restored_from_id
+      %w[activation binding integrations provider runtime].each { |key| payload[key] = current.fetch(key).deep_dup }
+    end
     # Publishing prompts must never expand activation or replace native binding.
-    %w[activation binding limits integrations provider runtime].each do |key|
+    %w[activation binding integrations provider runtime].each do |key|
       raise ArgumentError unless payload[key] == current.fetch(key)
     end
     payload.fetch('roles').each do |role, config|
@@ -49,6 +52,7 @@ class VetorialAgent::Configuration
     end
     number = (@deployment.revisions.maximum(:number) || 0) + 1
     payload.merge!('deployment_id' => @deployment.id, 'revision' => number, 'policy_epoch' => @deployment.policy_epoch + 1)
+    VetorialAgent::Snapshot.validate!(payload)
     @deployment.revisions.create!(number: number, payload: payload, sha256: VetorialAgent::Snapshot.digest(payload),
                                   created_by_id: @actor_id, restored_from_id: restored_from_id)
   end

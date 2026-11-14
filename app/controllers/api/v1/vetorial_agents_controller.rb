@@ -71,6 +71,8 @@ class Api::V1::VetorialAgentsController < Api::V1::BaseController
 
   def show
     render json: { success: true, data: VetorialAgent::ProfileView.summary(@profile).merge(
+      linked_inboxes: Inbox.where(id: @deployment.payload.dig('binding', 'inbox_ids')).pluck(:id, :name).map { |id, name| { id: id, name: name } },
+      can_manage: Current.user.administrator? && has_user_permission?(Current.user.id, 'ai_agents.update'),
       lock_version: @deployment.lock_version, control_source: @deployment.control_source,
       published_revision: revision_view(@deployment.active_revision)) }
   end
@@ -137,7 +139,7 @@ class Api::V1::VetorialAgentsController < Api::V1::BaseController
 
   def revision_view(revision, text: true)
     view = { id: revision.id, revision: revision.number, sha256: revision.sha256, status: revision.status,
-             created_at: revision.created_at, published_at: revision.published_at }
+             created_at: revision.created_at, created_by: User.find_by(id: revision.created_by_id)&.name || 'Importação inicial', published_at: revision.published_at }
     view[:payload] = revision.payload if text
     view
   end

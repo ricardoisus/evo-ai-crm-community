@@ -74,6 +74,9 @@ RSpec.describe 'Managed conversation assignment grant', type: :request do
           post url, params: { version: 1, clear_assignee: true }, as: :json
         end
         expect(response.status).to eq(permission ? 200 : 403)
+        if permission && verb == :get
+          expect(response.parsed_body['data']).to include('mode' => 'pilot', 'health' => 'unavailable', 'reason' => 'human_assigned')
+        end
       end
     end
   end

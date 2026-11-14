@@ -51,6 +51,28 @@ RSpec.describe 'Vetorial CRM configuration foundation' do
     expect(deployment.policy_epoch).to eq(2)
   end
 
+  it 'restores prompt history while preserving newer activation and native binding' do
+    old = published
+    service = VetorialAgent::Configuration.new(deployment)
+    current = old.payload.deep_dup
+    current['activation']['atendimento'] = 'off'
+    service.replace(current)
+    restored = service.draft(old.payload, restored_from_id: old.id)
+    expect(restored.payload['activation']['atendimento']).to eq('off')
+    expect(restored.payload['binding']).to eq(deployment.payload['binding'])
+    expect(restored.status).to eq('draft')
+  end
+
+  it 'allows lower operational limits and rejects values exceeding the safe maximum' do
+    revision = published
+    service = VetorialAgent::Configuration.new(deployment)
+    lower = revision.payload.deep_dup
+    lower['limits']['messages_per_hour'] = 10
+    expect(service.draft(lower).payload['limits']['messages_per_hour']).to eq(10)
+    lower['limits']['messages_per_hour'] = 21
+    expect { service.draft(lower) }.to raise_error(VetorialAgent::Snapshot::Invalid)
+  end
+
   it 'stores responses atomically and rejects changed requests and stale versions' do
     published
     service = VetorialAgent::Configuration.new(deployment, actor_id: nil)

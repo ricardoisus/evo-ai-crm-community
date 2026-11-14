@@ -9,7 +9,8 @@ class Api::V1::VetorialConversationControlsController < Api::V1::BaseController
     state = VetorialAgent::State.find_by(conversation: @conversation)
     eligible = @deployment.eligible?(@conversation)
     render json: { success: true, data: { version: state&.version || 0, paused: state&.paused || false,
-      reason: state&.reason, eligible: eligible, revision: @deployment.payload['revision'] } }
+      reason: state&.reason, eligible: eligible, mode: @deployment.payload.dig('activation', 'atendimento'),
+      health: VetorialAgent::ProfileView.health(@deployment), revision: @deployment.payload['revision'] } }
   end
 
   def pause

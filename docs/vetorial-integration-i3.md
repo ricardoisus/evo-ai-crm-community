@@ -209,3 +209,11 @@ RAILS_ENV=test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55439 POSTGRES_DATABASE=evo
 The final R1–R8/backend × C1–C9/C14 matrix and measured rollback are in the original
 `OPDIR/entregas/I3-backend-runtime.md` §J12. Production C5, deployment/digests and UI
 acceptance remain owned by I7/I4/I5; local acceptance does not authorize deployment.
+
+## I4 — Interface support
+
+The managed profile DTO now exposes `can_manage` (administrator plus update grant), linked inbox names and revision authors, without secrets. Conversation control reads expose mode and heartbeat-derived health independently of pause/eligibility. Metrics include a bounded last-20 execution view, nullable per-execution cost, measurement start, month usage coverage and nearest-rank p50/p95 of confirmed-send latency with N. No sample yields null percentiles; no matching/known usage yields unavailable execution cost.
+
+Drafts may lower operational limits within the existing closed snapshot schema (20 messages/h remains the maximum). Invalid bounds are rejected before persistence. Restoring an old revision overlays current activation, native binding and protected runtime/integration/provider fields before creating the new draft, so an old prompt never reactivates an agent. Publication/CAS/idempotency and role contracts remain enforced. Added regression assertions cover latency/empty samples, unknown cost, conversation mode/health, safe limit changes and restoration after off.
+
+Frontend lives in the initialized runtime submodule `evo-ai-frontend-community`, on `codex/evo-integracao-backend`; its draft PR is part of I4. The canonical delivery and synthetic screenshot matrix are in OPDIR `entregas/I4-interface.md`. Production and the I5 visual verdict remain outside this stage.
