@@ -28,6 +28,35 @@ RSpec.describe 'Agent catalog C2', type: :request do
       expect(data['native']['meta']['total'] + data['managed'].size).to eq(43)
     end
   end
+  it 'forwards only explicit Core query and filter fields' do
+    accepted = { 'page' => '2', 'page_size' => '24', 'search' => 'test', 'folder_id' => 'folder',
+      'filters' => { '0' => { 'attribute_key' => 'type', 'filter_operator' => 'equal_to', 'values' => 'llm', 'query_operator' => 'and' } } }
+    supplied = accepted.deep_dup
+    supplied['admin'] = 'true'
+    supplied['account_id'] = 'other'
+    supplied['filters']['0']['admin'] = 'true'
+    expect(EvoAiCoreService).to receive(:catalog_agents).with(accepted, anything).and_return(status: 200, body: native)
+    get '/api/v1/agent_catalog', params: supplied
+    expect(response.status).to eq(200)
+  end
+
+  it 'accepts exactly MAX_MANAGED profiles and rejects excess before Core' do
+    4.times do |i|
+      deployment = VetorialAgent::Deployment.create!(agent_bot: AgentBot.create!(name: "Catalog #{i}"), slug: "catalog-#{i}")
+      data = payload.merge('deployment_id' => deployment.id)
+      revision = deployment.revisions.create!(number: 1, status: 'published', payload: data, sha256: VetorialAgent::Snapshot.digest(data))
+      deployment.update!(active_revision: revision)
+      %w[atendimento analista].each { |role| deployment.profiles.create!(role: role, name: role) }
+    end
+    get '/api/v1/agent_catalog'
+    expect(response.parsed_body.dig('data', 'managed').size).to eq(10)
+    deployment = VetorialAgent::Deployment.create!(agent_bot: AgentBot.create!(name: 'Excess'), slug: 'catalog-excess')
+    deployment.profiles.create!(role: 'atendimento', name: 'Excess')
+    expect(EvoAiCoreService).not_to receive(:catalog_agents)
+    get '/api/v1/agent_catalog'
+    expect(response.status).to eq(500)
+  end
+
   it 'filters managed by search/mode/health/source without changing native' do
     get '/api/v1/agent_catalog', params: { search: 'ANALISTA', mode: 'pilot', health: 'unavailable' }
     expect(response.parsed_body.dig('data', 'managed').map { |p| p['role'] }).to eq(['analista'])

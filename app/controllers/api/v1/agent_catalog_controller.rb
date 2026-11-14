@@ -1,9 +1,14 @@
 class Api::V1::AgentCatalogController < Api::V1::BaseController
+  MAX_MANAGED = 10
+
   require_permissions({ index: 'ai_agents.read' })
 
   def index
     ids = Current.user.assigned_inboxes.pluck(:id)
-    managed = VetorialAgent::Profile.includes(deployment: :active_revision).order(:role, :id).select do |profile|
+    profiles = VetorialAgent::Profile.includes(deployment: :active_revision).order(:role, :id).limit(MAX_MANAGED + 1).to_a
+    raise "Managed profile limit exceeded (#{MAX_MANAGED})" if profiles.size > MAX_MANAGED
+
+    managed = profiles.select do |profile|
       payload = profile.deployment.payload
       payload && payload['binding']['inbox_ids'].any? && (payload['binding']['inbox_ids'] - ids).empty?
     end
@@ -14,7 +19,8 @@ class Api::V1::AgentCatalogController < Api::V1::BaseController
     native = nil
     partial = false
     unless params[:source] == 'vetorial_runtime'
-      result = EvoAiCoreService.catalog_agents(params.except(:controller, :action, :source, :mode, :health).to_unsafe_h, request.headers)
+      result = EvoAiCoreService.catalog_agents(params.permit(:skip, :limit, :page, :pageSize, :page_size, :search, :search_query, :folder_id,
+        filters: [:attribute_key, :filter_operator, :values, :query_operator, :operator, { conditions: [] }]).to_h, request.headers)
       return head result[:status] if [401, 403].include?(result[:status])
       native = result[:body] if result[:status] == 200
       partial = native.nil?

@@ -6,7 +6,11 @@ require 'sidekiq/embedded'
 require 'sidekiq/api'
 
 # Real loopback HTTP -> Rails request stack, Postgres, Redis/Sidekiq and Python.
-# The optional path is explicit so ordinary consumers need no sibling checkout.
+# Optional external setup (absolute paths):
+# VETORIAL_REHEARSAL_RUNTIME: runtime services/vetorial-agente directory.
+# VETORIAL_REHEARSAL_PYTHON: Python executable with runtime test dependencies.
+# POSTGRES_TEST_URL: dedicated synthetic vetorial_agent_a12_test database.
+# Rails also requires evo_i3_test and Redis at 127.0.0.1:56389.
 RSpec.describe 'J12 backend rehearsal', type: :request do
   self.use_transactional_tests = false
   let(:phone) { '+15550000002' }
@@ -33,6 +37,10 @@ RSpec.describe 'J12 backend rehearsal', type: :request do
   let(:bridge) { VetorialAgent::Bridge.new(conversation) }
 
   before do
+    required = %w[VETORIAL_REHEARSAL_RUNTIME VETORIAL_REHEARSAL_PYTHON POSTGRES_TEST_URL]
+    missing = required.select { |key| ENV[key].blank? }
+    skip "Backend rehearsal requires external setup: #{missing.join(', ')} (see spec header)" if missing.any?
+
     ActiveJob::Base.queue_adapter = :test
     allow_any_instance_of(Channel::Whatsapp).to receive(:validate_provider_config)
     allow(ActionCableListener.instance).to receive(:message_created)
