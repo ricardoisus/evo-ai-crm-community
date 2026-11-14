@@ -20,3 +20,6 @@ Rails.application.config.filter_parameters += [:email_hash, :assertion, :attribu
 
 # Evolution ingress includes the API key and private message bodies.
 Rails.application.config.filter_parameters += [:apikey, :data]
+
+# Lead intake and acquisition signals must not enter request logs.
+Rails.application.config.filter_parameters += [:authorization, :contact, :page_url, :ctwa_clid, :ctwaClid, :lead_acquisition]

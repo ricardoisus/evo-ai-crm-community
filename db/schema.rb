@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_13_130000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_14_040000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -808,6 +808,64 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_130000) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.index ["title"], name: "index_labels_on_title", unique: true
+  end
+
+  create_table "lead_automation_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "contact_id", null: false
+    t.uuid "conversation_id"
+    t.uuid "message_id"
+    t.string "source_key", limit: 200, null: false
+    t.string "source", limit: 20, null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "received_at", null: false
+    t.jsonb "signal", default: {}, null: false
+    t.string "status", limit: 20, default: "pending", null: false
+    t.integer "attempts", default: 0, null: false
+    t.datetime "processed_at"
+    t.string "error_code", limit: 80
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id"], name: "index_lead_automation_events_on_contact_id", unique: true
+    t.index ["source_key"], name: "index_lead_automation_events_on_source_key", unique: true
+    t.index ["status", "received_at"], name: "index_lead_automation_events_on_status_and_received_at"
+  end
+
+  create_table "lead_automation_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", limit: 120, null: false
+    t.boolean "active", default: false, null: false
+    t.datetime "activated_at"
+    t.integer "revision", default: 1, null: false
+    t.jsonb "conditions", default: {}, null: false
+    t.uuid "pipeline_id", null: false
+    t.uuid "pipeline_stage_id", null: false
+    t.uuid "owner_id"
+    t.jsonb "label_ids", default: [], null: false
+    t.string "title_template", limit: 160, default: "Novo lead · {{contact_name}}", null: false
+    t.string "intake_token_digest", limit: 64
+    t.uuid "created_by_id"
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["active", "deleted_at"], name: "index_lead_automation_rules_on_active_and_deleted_at"
+    t.index ["pipeline_id"], name: "index_lead_automation_rules_on_pipeline_id"
+  end
+
+  create_table "lead_automation_runs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "rule_id", null: false
+    t.uuid "event_id", null: false
+    t.uuid "contact_id", null: false
+    t.uuid "conversation_id"
+    t.uuid "deal_id"
+    t.integer "rule_revision", null: false
+    t.string "status", limit: 20, null: false
+    t.string "reason_code", limit: 80
+    t.string "source", limit: 20, null: false
+    t.integer "attempts", default: 1, null: false
+    t.datetime "executed_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["rule_id", "contact_id"], name: "index_lead_automation_runs_on_rule_id_and_contact_id", unique: true
+    t.index ["rule_id", "executed_at"], name: "index_lead_automation_runs_on_rule_id_and_executed_at"
   end
 
   create_table "macro_executions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

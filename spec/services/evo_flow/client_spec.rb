@@ -338,7 +338,7 @@ RSpec.describe EvoFlow::Client do
         .and_return(described_class::DEFAULT_API_URL)
       allow(ENV).to receive(:fetch).with('AUTH_APIKEY_INTEGRATION_LOCAL', nil).and_return('k')
 
-      stub = stub_request(:post, 'http://evo-flow:3000/api/v1/events/track')
+      stub = stub_request(:post, 'http://evo-flow:3334/api/v1/events/track')
              .to_return(status: 200, body: '{}')
 
       described_class.new.post('/events/track', payload)

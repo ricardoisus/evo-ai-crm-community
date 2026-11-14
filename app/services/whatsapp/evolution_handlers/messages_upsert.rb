@@ -166,7 +166,7 @@ module Whatsapp::EvolutionHandlers::MessagesUpsert
   end
 
   def save_message_and_notify
-    @message.save!
+    LeadAutomations::CaptureEvent.persist_message(@message, raw: @raw_message, inbox: inbox, params: params)
 
     Rails.logger.info "Evolution API: Message created successfully - ID: #{@message.id}, Content: #{@message.content&.truncate(100)}"
 

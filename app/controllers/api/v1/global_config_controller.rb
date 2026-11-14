@@ -31,11 +31,25 @@ class Api::V1::GlobalConfigController < Api::BaseController
       evolutionHubEnabled: evolution_hub_active?,
       hubAllowExistingChannels: hub_allow_existing_channels?,
       hasTwitterConfig: IntegrationRequirements.configured?('twitter'),
+      evoFlowConfigured: valid_flow_url?(ENV['EVO_FLOW_PUBLIC_URL']),
+      evoFlowProxyConfigured: valid_flow_url?(ENV['EVO_FLOW_API_URL']) && ENV['AUTH_APIKEY_INTEGRATION_LOCAL'].present?,
+      evoFlowPublicUrl: valid_flow_url?(ENV['EVO_FLOW_PUBLIC_URL']) ? ENV['EVO_FLOW_PUBLIC_URL'].strip : nil,
       openaiConfigured: openai_configured?,
       enableAccountSignup: enable_account_signup?,
       recaptchaSiteKey: GlobalConfigService.load('RECAPTCHA_SITE_KEY', nil),
       clarityProjectId: GlobalConfigService.load('CLARITY_PROJECT_ID', nil),
     }
+  end
+
+  # Explicit URLs only: the client's internal default is not installation intent.
+  def valid_flow_url?(value)
+    return false if value.blank? || value.match?(/placeholder|undefined/i)
+
+    uri = URI.parse(value.strip)
+    %w[http https].include?(uri.scheme) && uri.host.present? &&
+      uri.userinfo.nil? && uri.query.nil? && uri.fragment.nil?
+  rescue URI::InvalidURIError
+    false
   end
 
   def enable_account_signup?

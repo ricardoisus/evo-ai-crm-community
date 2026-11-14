@@ -61,12 +61,12 @@ class Webhooks::WhatsappController < ActionController::API
     perform_sync if params[:awaitResponse].present?
     return if performed?
 
-    Webhooks::WhatsappEventsJob.perform_later(params.to_unsafe_hash)
+    Webhooks::WhatsappEventsJob.perform_later(params.to_unsafe_hash.merge('lead_automation_received_at' => Time.current.iso8601(6)))
     head :ok
   end
 
   def perform_sync
-    Webhooks::WhatsappEventsJob.perform_now(params.to_unsafe_hash)
+    Webhooks::WhatsappEventsJob.perform_now(params.to_unsafe_hash.merge('lead_automation_received_at' => Time.current.iso8601(6)))
   rescue Whatsapp::IncomingMessageBaileysService::InvalidWebhookVerifyToken
     head :unauthorized
   rescue Whatsapp::IncomingMessageBaileysService::MessageNotFoundError

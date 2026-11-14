@@ -148,6 +148,21 @@ RSpec.describe 'Pipeline card configuration', type: :request do
     expect(queries.size).to be <= 4
   end
 
+  it 'includes attached synthetic contact avatars in the board payload' do
+    contact = Contact.create!(name: 'Contato Sintético', type: 'person')
+    png = Base64.decode64('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1sAAAAASUVORK5CYII=')
+    contact.avatar.attach(io: StringIO.new(png), filename: 'synthetic.png', content_type: 'image/png')
+    stage = pipeline.pipeline_stages.create!(name: 'Entrada', position: 1)
+    pipeline.pipeline_items.create!(pipeline_stage: stage, title: 'Com foto', primary_contact: contact, contact: contact)
+    get "/api/v1/pipelines/#{pipeline.id}", as: :json
+    expect(response).to have_http_status(:ok)
+    item = response.parsed_body.dig('data', 'stages', 0, 'items', 0)
+    %w[primary_contact contact].each do |field|
+      expect(item.dig(field, 'avatar_url')).to include('/rails/active_storage/')
+      expect(item.dig(field, 'thumbnail')).to eq(item.dig(field, 'avatar_url'))
+    end
+  end
+
   it 'denies a reader changing shared configuration' do
     allow_any_instance_of(PipelinePolicy).to receive(:update?).and_return(false)
     save_configuration
