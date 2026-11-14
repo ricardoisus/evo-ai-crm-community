@@ -1,7 +1,7 @@
 # Integração I3: base parcial, sem autorização de implantação
 
 Data: 12/11/2026. Etapa: I3. Autor: Theo, CTO · Codex Sol.
-Status: **INCOMPLETA**. PR em rascunho. Não usar como backend final da I4.
+Status atual: **backend aceito na J12 para conexão da I4**, em ambiente sintético. PR permanece rascunho; sem merge/deploy. Seções I3–J11 abaixo são histórico; a matriz J12 substitui suas pendências de backend.
 Fontes: plano da frente §8; I1 §§3–10; I2 C1–C14, na pasta Evo CRM Agentes.
 
 ## Implementado
@@ -166,3 +166,46 @@ Evidências executáveis: `spec/requests/internal/vetorial_agent_{api_matrix,cat
 O contrato fechado está em `config/vetorial_snapshot.schema.json` (fonte) e na cópia técnica idêntica `services/vetorial-agente/vetorial_agent/snapshot.schema.json` do runtime, necessária à validação independente e incluída no pacote Python. Mudanças devem atualizar os dois e conferir igualdade byte a byte. São fechados os blocos de comportamento, vínculo, ativação, integrações, limites, provedor/runtime e a linguagem de schemas/ações, incluindo keywords aninhadas e referências somente locais. Objetos vazios legados em limits/provider/runtime preservam os defaults versionados existentes; campos fornecidos têm tipo, enum e teto explícitos. IDs são identificadores opacos limitados; UUID/FKs são impostos pelo CRM. O contrato A14 completo continua válido. Ruby e Python recusam expediente sobreposto e piloto sem lista.
 
 A migração 20261113130000 impõe epoch/versão positivos, enum de origem/papel/status, número/hash/payload de revisão e FK composta que impede apontar para revisão de outro deployment. Aplicação e reversão foram exercitadas somente no banco sintético. Respostas de mutações são normalizadas para JSON antes da auditoria, mantendo a primeira resposta idêntica ao replay (inclusive timestamps).
+
+
+## J12 — integrated backend acceptance
+
+The executable rehearsal is `spec/integration/vetorial_backend_rehearsal_spec.rb` plus
+runtime `tests/rehearse_backend.py`. It opens only loopback sockets and uses the
+synthetic PostgreSQL databases and Redis 56389. A dedicated, randomly named Redis
+queue is consumed by a real embedded Sidekiq processor; unrelated queues are not
+consumed. Rails requests cross TCP and the actual Rack/controller/HMAC stack;
+CRM DispatchJob sends the committed event over HTTP to the runtime FastAPI ingress.
+Only the model HTTP transport and WhatsApp transport are doubles. No live provider
+or paid model is reachable in the rehearsal.
+
+Sequence: publish -> heartbeat ACK -> incoming conversation -> persisted draft ->
+Sidekiq send receipt -> worker retry -> CRM execution/usage/metrics ->
+pause/resume (commercial/read state unchanged) -> off. Then a legacy worker writes
+a draft and receives an A14 receipt; an overlapping new worker cannot steal its
+lease. After graceful release, explicit hash-checked adoption allows the CRM worker
+to finish without another model call or another public message. Rollback disables
+the native association before restoring legacy control, reads the same A14 receipt,
+and verifies queue, draft and operations byte-for-byte after reopening the store.
+C1 tests a mixed CRM/Sidekiq inventory rejection and the old generic listener/default
+branches with the managed guard bypassed, followed by the guarded behavior. This is
+a local synthetic rollout, not a Swarm deployment or production digest verification.
+
+A completed `sent|done` CRM command can be read under the current revision if its
+logical payload is identical. Its original payload/receipt remain immutable; changed
+text, stale fences and pending/uncertain commands cannot use this exception. This
+closes the A14 receipt collision found while preparing the rehearsal.
+
+Run the normal CRM command plus `spec/integration/vetorial_backend_rehearsal_spec.rb`
+with these additional environment variables (no application configuration changes):
+
+```sh
+export VETORIAL_REHEARSAL_RUNTIME=/Users/ricardohenrique/Projetos/evo-crm/_evo-i3-runtime/services/vetorial-agente
+export VETORIAL_REHEARSAL_PYTHON=/Users/ricardohenrique/Projetos/evo-crm/_evo-agenda-runtime/services/vetorial-agente/.venv/bin/python
+export POSTGRES_TEST_URL=postgresql+psycopg://postgres@127.0.0.1:55439/vetorial_agent_a12_test
+RAILS_ENV=test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55439 POSTGRES_DATABASE=evo_i3_test POSTGRES_USERNAME=postgres REDIS_URL=redis://127.0.0.1:56389 SECRET_KEY_BASE=synthetic-j1-local-only bundle exec rspec spec/services/vetorial_agent spec/controllers/api/v1/vetorial_agents_controller_spec.rb spec/requests/internal spec/integration/vetorial_backend_rehearsal_spec.rb
+```
+
+The final R1–R8/backend × C1–C9/C14 matrix and measured rollback are in the original
+`OPDIR/entregas/I3-backend-runtime.md` §J12. Production C5, deployment/digests and UI
+acceptance remain owned by I7/I4/I5; local acceptance does not authorize deployment.

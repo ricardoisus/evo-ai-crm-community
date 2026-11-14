@@ -289,4 +289,20 @@ RSpec.describe 'Vetorial agent durable bridge' do
     expect(VetorialAgent::Event.where("payload->>'version' = ?", '3').sole.payload['kind']).to eq('resume')
   end
 
+  it 'looks up a completed legacy receipt after promotion without recreating the effect' do
+    deployment = managed_deployment
+    incoming
+    original = command(text: 'Resposta A14')
+    receipt = bridge.call(original)
+    allow_any_instance_of(VetorialAgent::Transport).to receive(:send_text).and_return('legacy-receipt')
+    VetorialAgent::SendJob.perform_now(VetorialAgent::Command.find_by!(key: original['key']).id)
+    deployment.update!(control_source: 'crm')
+    lookup = original.merge('revision' => 1, 'policy_epoch' => 1, 'sha256' => deployment.active_revision.sha256)
+    expect { expect(bridge.call(lookup)).to include('status' => 'sent', 'message_id' => receipt['message_id']) }
+      .not_to change(Message, :count)
+    expect { bridge.call(lookup.merge('text' => 'Different')) }.to raise_error(VetorialAgent::Bridge::Rejected)
+    expect { bridge.call(lookup.merge('policy_epoch' => 99)) }.to raise_error(VetorialAgent::Bridge::Rejected)
+    expect(VetorialAgent::Command.find_by!(key: original['key']).payload).to eq(original)
+  end
+
 end
