@@ -133,6 +133,42 @@ RSpec.describe PipelineItem, type: :model do
     end
   end
 
+  describe '#webhook_data' do
+    # Regressão: value era BigDecimal e o Sidekiq recusava enfileirar o WebhookJob
+    # ("Job arguments to WebhookJob must be native JSON types").
+    it 'devolve o valor do negócio como Float, seguro para JSON' do
+      item = PipelineItem.create!(pipeline: pipeline, pipeline_stage: pipeline_stage, contact: contact, value: 1250.5)
+
+      expect(item.webhook_data[:value]).to be_a(Float).and eq(1250.5)
+    end
+
+    it 'devolve 0.0 quando o negócio não tem valor' do
+      item = PipelineItem.create!(pipeline: pipeline, pipeline_stage: pipeline_stage, contact: contact)
+
+      expect(item.webhook_data[:value]).to eq(0.0)
+    end
+
+    it 'enfileira o WebhookJob com o payload de pipeline_item.updated no Sidekiq estrito' do
+      item = PipelineItem.create!(pipeline: pipeline, pipeline_stage: pipeline_stage, contact: contact, value: 10)
+      payload = item.webhook_data.merge(
+        event: 'pipeline_item.updated',
+        changed_attributes: { 'pipeline_stage_id' => [SecureRandom.uuid, pipeline_stage.id] }
+      )
+
+      # O ActiveJob serializa Time/Date; o que sobra tem de ser tipo JSON nativo.
+      native = lambda do |v|
+        case v
+        when Hash then v.all? { |k, val| k.is_a?(String) && native.call(val) }
+        when Array then v.all? { |val| native.call(val) }
+        else [String, Integer, Float, TrueClass, FalseClass, NilClass].any? { |t| v.is_a?(t) }
+        end
+      end
+      serialized = ActiveJob::Arguments.serialize(['https://example.test/hook', payload])
+
+      expect(native.call(serialized)).to be(true)
+    end
+  end
+
   describe 'serialization behavior' do
     it 'marks contact-based orphaned items correctly in serializer' do
       item = PipelineItem.create!(
