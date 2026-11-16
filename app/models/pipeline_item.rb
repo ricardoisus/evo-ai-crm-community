@@ -346,7 +346,7 @@ class PipelineItem < ApplicationRecord
       company_id: company_id,
       owner_id: owner_id,
       title: title,
-      value: deal_value,
+      value: deal_value&.to_f,
       currency: currency,
       notes: notes,
       is_lead: lead?,
