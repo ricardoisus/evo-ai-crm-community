@@ -95,9 +95,11 @@ class PipelineItem < ApplicationRecord
   after_create_commit :broadcast_stage_update_to_evo_flow
   after_update :create_stage_change_movement, if: :saved_change_to_pipeline_stage_id?
   after_update_commit :broadcast_stage_update_to_evo_flow, if: :saved_change_to_pipeline_stage_id?
-  after_update :publish_pipeline_item_updated
+  # Dispatched after commit: the async dispatcher runs in Sidekiq and would
+  # otherwise read the row before the transaction commits (stale stage in webhooks).
+  after_update_commit :publish_pipeline_item_updated
   after_update :record_update_history
-  after_update :publish_pipeline_item_completed, if: :saved_change_to_completed_at?
+  after_update_commit :publish_pipeline_item_completed, if: :saved_change_to_completed_at?
   before_destroy :record_deletion_history
   after_destroy :publish_pipeline_item_deleted
 

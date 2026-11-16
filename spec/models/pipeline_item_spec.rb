@@ -169,6 +169,24 @@ RSpec.describe PipelineItem, type: :model do
     end
   end
 
+  describe 'pipeline_item.updated dispatch timing' do
+    # Regressão: o evento era publicado em after_update (antes do commit) e o
+    # Sidekiq lia a linha antiga, enviando a etapa anterior no webhook.
+    it 'só despacha pipeline_item.updated depois do commit' do
+      item = described_class.create!(pipeline: pipeline, pipeline_stage: pipeline_stage, contact: contact)
+      other_stage = PipelineStage.create!(pipeline: pipeline, name: 'Stage 2', position: 2)
+      dispatched = []
+      allow(Rails.configuration.dispatcher).to receive(:dispatch) { |name, *| dispatched << name }
+
+      described_class.transaction do
+        item.update!(pipeline_stage: other_stage)
+        expect(dispatched).not_to include('pipeline_item.updated')
+      end
+
+      expect(dispatched).to include('pipeline_item.updated')
+    end
+  end
+
   describe 'serialization behavior' do
     it 'marks contact-based orphaned items correctly in serializer' do
       item = PipelineItem.create!(
