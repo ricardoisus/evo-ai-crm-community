@@ -49,7 +49,7 @@ module LeadAutomations
       c = p['contact']; consent = p['contact_consent']
       p['version'] == 2 && UUID.match?(p['event_id'].to_s) && p['event_id'] == key && Matcher.domain_url?(p['page_url'], HOST) &&
         c.is_a?(Hash) && c.keys.sort == %w[name phone_number] && c['name'].is_a?(String) && c['name'].strip.length.between?(1, 120) &&
-        c['phone_number'].is_a?(String) && c['phone_number'].match?(/\A\+[1-9]\d{6,14}\z/) &&
+        c['phone_number'].is_a?(String) && c['phone_number'].match?(/\A\+[1-9]\d{9,14}\z/) &&
         consent.is_a?(Hash) && consent.keys.sort == %w[accepted at version] && consent['accepted'] == true &&
         consent['version'].is_a?(String) && consent['version'].length.between?(1, 80) && time?(consent['at']) &&
         (!p.key?('acquisition') || acquisition?(p['acquisition']))
@@ -59,7 +59,7 @@ module LeadAutomations
       return false unless p.is_a?(Hash) && (p.keys - ENRICHMENT_KEYS).empty?
       return false unless p['version'] == 1 && UUID.match?(p['acquisition_id'].to_s) && p['revision'].is_a?(Integer) && p['revision'].between?(1, 2**63 - 1)
       return false unless key == "#{p['acquisition_id']}:#{p['revision']}" && p['instance_id'] == INSTANCE_ID
-      return false unless p['phone_number'].is_a?(String) && p['phone_number'].match?(/\A\+[1-9]\d{6,14}\z/) && %w[ctwa website chat].include?(p['source']) && time?(p['occurred_at'])
+      return false unless p['phone_number'].is_a?(String) && p['phone_number'].match?(/\A\+[1-9]\d{9,14}\z/) && %w[ctwa website chat].include?(p['source']) && time?(p['occurred_at'])
       return false if p['source'] == 'ctwa' && (!p['ctwa_clid'].is_a?(String) || p['ctwa_clid'].strip.empty?)
       limits = { 'ctwa_clid' => 2000, 'source_id' => 30, 'source_url' => 2048, 'headline' => 255, 'provider_message_id' => 200 }
       return false unless limits.all? { |k, max| !p.key?(k) || p[k].nil? || (p[k].is_a?(String) && p[k].bytesize <= max && !p[k].match?(/[\u0000-\u001f]/)) }

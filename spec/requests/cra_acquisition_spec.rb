@@ -46,6 +46,19 @@ RSpec.describe 'CRA authenticated contracts', type: :request do
     submit; expect(response).to have_http_status(:service_unavailable)
     expect(Contact.count).to eq(0)
   end
+  it 'rejects 7..9 digit phones in both CRA APIs before persisting' do
+    %w[+1234567 +12345678 +123456789].each do |phone|
+      submit(payload.deep_merge(contact: { phone_number: phone }))
+      expect(response).to have_http_status(:bad_request)
+      p = { version: 1, acquisition_id: SecureRandom.uuid, revision: 1, phone_number: phone,
+            instance_id: LeadAutomations::CraAcquisition::INSTANCE_ID, source: 'ctwa', occurred_at: Time.current.iso8601 }
+      post "/public/lead_automation_rules/#{rule.id}/acquisitions", params: p,
+           headers: { 'Authorization' => 'Bearer synthetic-enrichment', 'Idempotency-Key' => "#{p[:acquisition_id]}:1" }, as: :json
+      expect(response).to have_http_status(:bad_request)
+    end
+    expect(Contact.count).to eq(0)
+    expect(LeadAcquisitionEnrichment.count).to eq(0)
+  end
   it 'persists enrichment before ingress, waits for the event, uses its own token and refuses CORS' do
     p = { version: 1, acquisition_id: SecureRandom.uuid, revision: 1, phone_number: '+15550000009', instance_id: LeadAutomations::CraAcquisition::INSTANCE_ID,
       source: 'website', occurred_at: Time.current.iso8601, visitor_id: 'aa' * 24, first_touch: { utm_source: 'MetaAds' } }

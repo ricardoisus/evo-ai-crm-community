@@ -39,3 +39,12 @@ RAILS_ENV=test bundle exec rspec spec/services/lead_automations spec/models/lead
 ```
 
 S6:116 exemplos verdes, incluindo duas conexões reais form+mensagem/processamento, v1, tokens separados, prova tardia/recusa, orgânico, conversa antiga, privacidade e U3. Frontend tem testes de fonte/fallback/link allowlist/escaping/segredos, lint de arquivos tocados e build. Revisão Helena e validação real continuam necessárias.
+
+
+## S8: revisão e correções (16/11/2026)
+
+S7 Helena aprovou a implementação e avaliou a ausência de broadcast da projeção como ajuste de UX aceitável na primeira versão. Mantido `update_columns`: o operador precisa recarregar o cartão para ver enrichment recente. Não ligar callbacks genéricos nem publicar eventos comerciais/Flow para produzir refresh. Um broadcast específico exige nova revisão de RBAC/egress e prova de ausência de automações.
+
+Intake e enrichment **scoped CRA** passam a exigir telefone E.164 de 10–15 dígitos, alinhados ao banco de tracking e API do site. V1 legado preservado. S8 reexecutou 117 exemplos, incluindo rejeição de 7–9 dígitos em ambas as APIs sem persistir contato/enrichment.
+
+O gate de revogação autônoma da S2/S3/S7 permanece aberto; não promover a integração ativa. Desenho e critérios de aceite na seção S8 do módulo original `Vetorial - WhatsApp Tracking/integracoes/cra/README.md` (PR atividades#71). Código aprovado/PR pronto não equivale a liberação de produção; manter flag off e regra inativa enquanto esse gate não estiver implementado, testado e revisado.
