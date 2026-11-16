@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_14_040000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_16_220100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -810,6 +810,44 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_14_040000) do
     t.index ["title"], name: "index_labels_on_title", unique: true
   end
 
+  create_table "lead_acquisition_enrichments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "scope_event_id"
+    t.uuid "rule_id", null: false
+    t.uuid "acquisition_id", null: false
+    t.bigint "revision", null: false
+    t.string "digest", limit: 64, null: false
+    t.jsonb "payload", default: {}, null: false
+    t.string "status", limit: 20, default: "pending", null: false
+    t.string "error_code", limit: 80
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["acquisition_id", "revision"], name: "idx_cra_acquisition_revision", unique: true
+    t.index ["rule_id", "acquisition_id", "revision"], name: "idx_cra_enrichment_revision", unique: true
+    t.index ["scope_event_id"], name: "index_lead_acquisition_enrichments_on_scope_event_id"
+    t.index ["status", "created_at"], name: "idx_cra_enrichment_pending"
+  end
+
+  create_table "lead_acquisition_scope_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "scope_key", limit: 60, null: false
+    t.uuid "contact_id", null: false
+    t.uuid "conversation_id"
+    t.uuid "message_id"
+    t.string "source_key", limit: 200, null: false
+    t.string "source", limit: 20, null: false
+    t.jsonb "signal", default: {}, null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "received_at", null: false
+    t.string "status", limit: 20, default: "pending", null: false
+    t.integer "attempts", default: 0, null: false
+    t.string "error_code", limit: 80
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id"], name: "index_lead_acquisition_scope_events_on_contact_id"
+    t.index ["scope_key", "contact_id"], name: "idx_cra_scope_contact", unique: true
+    t.index ["scope_key", "source_key"], name: "idx_cra_scope_source", unique: true
+    t.index ["status", "received_at"], name: "idx_cra_scope_pending"
+  end
+
   create_table "lead_automation_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "contact_id", null: false
     t.uuid "conversation_id"
@@ -846,13 +884,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_14_040000) do
     t.datetime "deleted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "acquisition_scope_key", limit: 60
+    t.string "enrichment_token_digest", limit: 64
+    t.index ["acquisition_scope_key"], name: "idx_cra_rule_scope", unique: true, where: "((acquisition_scope_key IS NOT NULL) AND (deleted_at IS NULL))"
     t.index ["active", "deleted_at"], name: "index_lead_automation_rules_on_active_and_deleted_at"
     t.index ["pipeline_id"], name: "index_lead_automation_rules_on_pipeline_id"
   end
 
   create_table "lead_automation_runs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "rule_id", null: false
-    t.uuid "event_id", null: false
+    t.uuid "event_id"
     t.uuid "contact_id", null: false
     t.uuid "conversation_id"
     t.uuid "deal_id"
@@ -864,8 +905,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_14_040000) do
     t.datetime "executed_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "scope_event_id"
     t.index ["rule_id", "contact_id"], name: "index_lead_automation_runs_on_rule_id_and_contact_id", unique: true
     t.index ["rule_id", "executed_at"], name: "index_lead_automation_runs_on_rule_id_and_executed_at"
+    t.index ["scope_event_id"], name: "index_lead_automation_runs_on_scope_event_id"
   end
 
   create_table "macro_executions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -70,7 +70,7 @@ module PipelineItemSerializer
       item_id: pipeline_item.conversation_id || pipeline_item.contact_id,
       type: pipeline_item.lead? ? 'contact' : 'conversation',
       is_lead: pipeline_item.lead?,
-      custom_fields: pipeline_item.custom_fields || {},
+      custom_fields: LeadAutomations::CraProjection.egress(pipeline_item.custom_fields, pipeline: pipeline_item.pipeline),
       entered_at: pipeline_item.entered_at&.to_i,
       completed_at: pipeline_item.completed_at&.to_i,
       days_in_pipeline: pipeline_item.days_in_pipeline,

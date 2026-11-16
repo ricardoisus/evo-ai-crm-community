@@ -189,7 +189,10 @@ class Message < ApplicationRecord
       else raise ArgumentError, "unknown audience #{audience.inspect}"
       end
 
-    attributes = content_attributes.except('observed_payload')
+    attributes = content_attributes.except('observed_payload').deep_dup
+    if attributes['lead_acquisition'].is_a?(Hash) && attributes.dig('lead_acquisition', 'instance_id') == LeadAutomations::CraAcquisition::INSTANCE_ID
+      attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id')
+    end
     return attributes unless masked
 
     ContactPiiMasker.scrub_pii_content_attributes(attributes)

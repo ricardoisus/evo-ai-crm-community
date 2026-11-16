@@ -7,7 +7,7 @@
 # resource. This endpoint needs database-backed exact-origin validation and 403.
 class LeadIntakeAwareCors < Rack::Cors
   def call(env)
-    return @app.call(env) if env['PATH_INFO'].to_s.match?(%r{\A/public/lead_automation_rules/[^/]+/leads\z})
+    return @app.call(env) if env['PATH_INFO'].to_s.match?(%r{\A/public/lead_automation_rules/[^/]+/(?:leads|acquisitions)\z})
 
     super
   end

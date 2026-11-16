@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  post '/public/lead_automation_rules/:id/acquisitions', to: 'public/lead_acquisitions#create'
   match '/public/lead_automation_rules/:id/leads', to: 'public/lead_automation_leads#create', via: [:post, :options]
   post '/internal/instagram-amh/associate', to: 'instagram_amh_link_associations#create'
   post '/internal/instagram-amh/resolve', to: 'instagram_amh_link_resolutions#create'
@@ -639,6 +640,7 @@ Rails.application.routes.draw do
           member do
             patch :move_to_stage
             patch :update_custom_fields
+            get :acquisition, to: 'cra_acquisitions#show'
             patch :update_conversation
           end
           collection do

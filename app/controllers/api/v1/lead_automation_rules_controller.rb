@@ -61,7 +61,8 @@ class Api::V1::LeadAutomationRulesController < Api::V1::BaseController
         return error_response(ApiErrorCodes::VALIDATION_ERROR, 'Origem domínio desabilitada', status: :unprocessable_entity)
       end
       token = SecureRandom.hex(32)
-      @rule.update!(intake_token_digest: Digest::SHA256.hexdigest(token))
+      field = params[:purpose] == 'enrichment' && @rule.cra_scoped? ? :enrichment_token_digest : :intake_token_digest
+      @rule.update!(field => Digest::SHA256.hexdigest(token))
     end
     success_response(data: LeadAutomationRuleSerializer.serialize(@rule).merge(token: token))
   end
@@ -92,7 +93,7 @@ class Api::V1::LeadAutomationRulesController < Api::V1::BaseController
   end
 
   def rule_params
-    params.permit(:name, :active, :pipeline_id, :pipeline_stage_id, :owner_id, :title_template, label_ids: [],
+    params.permit(:name, :active, :pipeline_id, :pipeline_stage_id, :owner_id, :title_template, :acquisition_scope_key, label_ids: [],
                   conditions: [:version, :operator, { ctwa: [:enabled, :inbox_id, :instance_name], domain: [:enabled, :host] }]).to_h.tap do |input|
       # Conditions deliberately use model validation as the strict schema boundary.
       # Preserve unknown keys so unsupported fields are rejected, never silently ignored.

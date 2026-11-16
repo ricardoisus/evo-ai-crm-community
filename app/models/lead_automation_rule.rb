@@ -2,6 +2,7 @@ require 'digest'
 class LeadAutomationRule < ApplicationRecord
   scope :kept, -> { where(deleted_at: nil) }
   has_many :runs, class_name: 'LeadAutomationRun', foreign_key: :rule_id
+  validates :acquisition_scope_key, uniqueness: { conditions: -> { where(deleted_at: nil) } }, allow_nil: true
   validates :name, presence: true, length: { maximum: 120 }
   validates :active, inclusion: { in: [true, false] }
   validates :revision, numericality: { only_integer: true, greater_than: 0 }
@@ -20,6 +21,15 @@ class LeadAutomationRule < ApplicationRecord
       label_ids.all? { |id| id.is_a?(String) } && Label.where(id: label_ids).count == label_ids.uniq.length
   end
 
+  def cra_scoped?
+    acquisition_scope_key == 'client:cra'
+  end
+
+  def enrichment_token_valid?(token)
+    token.is_a?(String) && enrichment_token_digest.present? &&
+      ActiveSupport::SecurityUtils.secure_compare(Digest::SHA256.hexdigest(token), enrichment_token_digest)
+  end
+
   private
 
   def track_activation
@@ -30,6 +40,15 @@ class LeadAutomationRule < ApplicationRecord
   def validate_configuration
     errors.add(:base, 'destination_missing') unless destinations_valid?
     errors.add(:title_template, 'invalid_template') if title_template.to_s.gsub('{{contact_name}}', '').match?(/[{}]/)
+    errors.add(:acquisition_scope_key, 'immutable_scope') if persisted? && acquisition_scope_key_in_database.present? && will_save_change_to_acquisition_scope_key?
+    if acquisition_scope_key.present?
+      errors.add(:acquisition_scope_key, 'invalid_scope') unless cra_scoped?
+      errors.add(:conditions, 'invalid_cra_domain') unless conditions.dig('domain', 'host') == 'carolineribeiroadvogados.com'
+      errors.add(:conditions, 'cra_inbox_required') unless conditions.dig('ctwa', 'enabled') == true
+      channel = Inbox.find_by(id: conditions.dig('ctwa', 'inbox_id'))&.channel
+      errors.add(:conditions, 'invalid_cra_instance') unless channel.is_a?(Channel::Whatsapp) &&
+        channel.provider_config['attached_instance_id'] == LeadAutomations::CraAcquisition::INSTANCE_ID
+    end
     c = conditions
     unless c.is_a?(Hash) && (c.keys - %w[version operator ctwa domain]).empty? && c['version'] == 1 && c['operator'] == 'any'
       errors.add(:conditions, 'invalid_conditions')
