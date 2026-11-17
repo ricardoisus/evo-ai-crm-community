@@ -119,6 +119,14 @@ module Whatsapp::EvolutionHandlers::Helpers
     phone_number_from_jid
   end
 
+  # Nome público do interlocutor: pushName (ou nome verificado de conta comercial).
+  # Em mensagens enviadas por nós o pushName é o do dono da linha, nunca do contato.
+  def identity_push_name
+    return unless incoming?
+
+    (@raw_message[:pushName].presence || @raw_message[:verifiedBizName].presence)&.to_s&.strip.presence
+  end
+
   def evolution_extract_message_timestamp(timestamp)
     # Evolution API timestamp is usually in seconds or milliseconds
     timestamp = timestamp.to_i

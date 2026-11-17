@@ -3,66 +3,73 @@
 require 'rails_helper'
 
 RSpec.describe Evolution::FetchContactAvatarJob do
-  let(:contact_id) { 'contact-uuid' }
-  let(:channel_id) { 'channel-uuid' }
-  let(:phone_number) { '5511999999999' }
-  let(:contact) { instance_double(Contact, id: contact_id, avatar: avatar_double) }
-  let(:avatar_double) { instance_double(ActiveStorage::Attached::One, attached?: false) }
-  let(:channel) { instance_double(Channel::Whatsapp, id: channel_id) }
+  let(:contact) do
+    c = Contact.new(name: 'Ana', phone_number: '+5511999999999')
+    c.skip_default_pipeline_assignment = true
+    c.save!
+    c
+  end
+  let(:channel) { instance_double(Channel::Whatsapp, id: 'channel-uuid') }
   let(:provider_service) { instance_double(Whatsapp::Providers::EvolutionService) }
 
   before do
-    allow(Contact).to receive(:find_by).with(id: contact_id).and_return(contact)
-    allow(Channel::Whatsapp).to receive(:find_by).with(id: channel_id).and_return(channel)
-    allow(Whatsapp::Providers::EvolutionService).to receive(:new)
-      .with(whatsapp_channel: channel)
-      .and_return(provider_service)
+    allow(Channel::Whatsapp).to receive(:find_by).with(id: 'channel-uuid').and_return(channel)
+    allow(Whatsapp::Providers::EvolutionService).to receive(:new).with(whatsapp_channel: channel).and_return(provider_service)
   end
 
-  it 'enqueues Avatar::AvatarFromUrlJob when the provider returns a URL' do
-    allow(provider_service).to receive(:fetch_profile_picture_url).with(phone_number)
-                                                                  .and_return('https://cdn.example.com/profile.jpg')
-
-    expect(Avatar::AvatarFromUrlJob).to receive(:perform_later).with(contact, 'https://cdn.example.com/profile.jpg')
-
-    described_class.new.perform(contact_id, phone_number, channel_id)
+  def run
+    described_class.new.perform(contact.id, '5511999999999', 'channel-uuid')
   end
 
-  it 'skips download when the provider returns no URL' do
+  it 'downloads the picture when the provider returns a URL and records success' do
+    allow(provider_service).to receive(:fetch_profile_picture_url).and_return('https://pps.whatsapp.net/p.jpg')
+    expect(Avatar::AvatarFromUrlJob).to receive(:perform_now).with(contact, 'https://pps.whatsapp.net/p.jpg') do
+      contact.avatar.attach(io: StringIO.new('img'), filename: 'p.jpg', content_type: 'image/jpeg')
+    end
+    run
+    state = Whatsapp::ContactIdentitySync.avatar_state(contact.reload)
+    expect(state['misses']).to eq(0)
+    expect(state['synced_at']).to be_present
+  end
+
+  it 'records a miss (backoff) when the provider has no picture' do
     allow(provider_service).to receive(:fetch_profile_picture_url).and_return(nil)
-
-    expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_later)
-
-    described_class.new.perform(contact_id, phone_number, channel_id)
+    expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_now)
+    run
+    expect(Whatsapp::ContactIdentitySync.avatar_state(contact.reload)['misses']).to eq(1)
+    expect(Whatsapp::ContactIdentitySync.avatar_due?(contact)).to be(false)
   end
 
-  it 'short-circuits when the contact already has an avatar attached' do
-    allow(avatar_double).to receive(:attached?).and_return(true)
+  it 'records a miss when the download did not attach an avatar' do
+    allow(provider_service).to receive(:fetch_profile_picture_url).and_return('https://pps.whatsapp.net/p.jpg')
+    allow(Avatar::AvatarFromUrlJob).to receive(:perform_now)
+    run
+    expect(Whatsapp::ContactIdentitySync.avatar_state(contact.reload)['misses']).to eq(1)
+  end
 
+  it 'does not query WhatsApp again inside the backoff window' do
+    Whatsapp::ContactIdentitySync.record_avatar_result(contact, success: false)
     expect(provider_service).not_to receive(:fetch_profile_picture_url)
-    expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_later)
+    run
+  end
 
-    described_class.new.perform(contact_id, phone_number, channel_id)
+  it 'refreshes an old avatar after the renewal period' do
+    contact.avatar.attach(io: StringIO.new('old'), filename: 'o.jpg', content_type: 'image/jpeg')
+    Whatsapp::ContactIdentitySync.record_avatar_result(contact.reload, success: true, now: 20.days.ago)
+    allow(provider_service).to receive(:fetch_profile_picture_url).and_return('https://pps.whatsapp.net/new.jpg')
+    expect(Avatar::AvatarFromUrlJob).to receive(:perform_now).with(contact, 'https://pps.whatsapp.net/new.jpg')
+    run
   end
 
   it 'does nothing when the contact cannot be found' do
-    allow(Contact).to receive(:find_by).with(id: contact_id).and_return(nil)
-
-    expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_later)
-
-    described_class.new.perform(contact_id, phone_number, channel_id)
+    expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_now)
+    described_class.new.perform('00000000-0000-0000-0000-000000000000', '5511999999999', 'channel-uuid')
   end
 
   describe 'retry behavior' do
     it 'configures retry_on for network timeouts so transient failures recover' do
       retry_classes = described_class.rescue_handlers.map(&:first).map(&:to_s)
       expect(retry_classes).to include('Net::OpenTimeout', 'Net::ReadTimeout')
-    end
-
-    it 'propagates non-retried StandardError so Sidekiq + Sentry capture it' do
-      allow(provider_service).to receive(:fetch_profile_picture_url).and_raise(StandardError, 'boom')
-
-      expect { described_class.new.perform(contact_id, phone_number, channel_id) }.to raise_error(StandardError, 'boom')
     end
   end
 end

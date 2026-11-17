@@ -131,8 +131,7 @@ module Whatsapp::EvolutionHandlers::MessagesUpsert
     @contact_inbox = contact_inbox
     @contact = contact_inbox.contact
 
-    # Update contact name if it was just the phone number
-    @contact.update!(name: push_name) if @contact.name == raw_source_id && push_name.present?
+    Whatsapp::ContactIdentitySync.new(@contact).sync_name(identity_push_name)
 
     update_contact_profile_picture(@contact, source_id)
   end

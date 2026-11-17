@@ -258,6 +258,31 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     nil
   end
 
+  # Perfil conhecido pela Evolution para um número: { push_name:, profile_picture_url: }.
+  # Só leitura (POST /chat/findContacts); usado pela tarefa de backfill de nome/foto.
+  def fetch_contact_profile(phone_number)
+    number = phone_number.to_s.delete('+')
+    return nil if number.blank? || api_base_path.blank? || instance_name.blank?
+
+    response = HTTParty.post(
+      "#{api_base_path}/chat/findContacts/#{instance_name}",
+      headers: api_headers,
+      body: { where: { remoteJid: "#{number}@s.whatsapp.net" } }.to_json,
+      open_timeout: 5,
+      read_timeout: 15
+    )
+    return nil unless response.success?
+
+    entry = response.parsed_response
+    entry = entry.first if entry.is_a?(Array)
+    return nil unless entry.is_a?(Hash)
+
+    { push_name: entry['pushName'].presence, profile_picture_url: entry['profilePicUrl'].presence }
+  rescue StandardError => e
+    Rails.logger.error "Evolution API: findContacts error: #{e.class}"
+    nil
+  end
+
   private
 
   def try_logout_instance(instance_name)
