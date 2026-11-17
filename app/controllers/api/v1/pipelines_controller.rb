@@ -32,7 +32,7 @@ class Api::V1::PipelinesController < Api::V1::BaseController
     @pipelines = Pipeline.all
                         .accessible_by(Current.user)
                         .active
-                        .includes(pipeline_stages: [], pipeline_items: [])
+                        .includes(:pipeline_whatsapp_inboxes, pipeline_stages: [], pipeline_items: [])
                         .order(:name)
 
     success_response(
@@ -261,6 +261,7 @@ class Api::V1::PipelinesController < Api::V1::BaseController
     @pipeline = Pipeline.all
                           .includes(
                             :created_by,
+                            :pipeline_whatsapp_inboxes,
                             pipeline_stages: [],
                             pipeline_items: [
                               :pipeline_stage,
@@ -440,6 +441,7 @@ class Api::V1::PipelinesController < Api::V1::BaseController
     pipelines = Pipeline.all
                          .where(id: pipeline_ids_with_items)
                          .includes(
+                           :pipeline_whatsapp_inboxes,
                            pipeline_stages: [],
                            pipeline_items: [
                              :pipeline_stage,

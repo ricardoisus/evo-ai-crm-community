@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_16_220100) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_17_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1206,6 +1206,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_220100) do
     t.index ["status", "due_date"], name: "index_pipeline_tasks_on_pending_status_and_due_date", where: "(status = 0)"
   end
 
+  create_table "pipeline_whatsapp_inboxes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "pipeline_id", null: false
+    t.uuid "inbox_id", null: false
+    t.boolean "is_default", default: false, null: false
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inbox_id"], name: "index_pipeline_whatsapp_inboxes_on_inbox_id"
+    t.index ["pipeline_id", "inbox_id"], name: "idx_pipeline_whatsapp_inboxes_unique", unique: true
+    t.index ["pipeline_id"], name: "idx_pipeline_whatsapp_inboxes_one_default", unique: true, where: "(is_default AND is_active)"
+  end
+
   create_table "pipelines", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "created_by_id", null: false
     t.string "name", null: false
@@ -1814,6 +1826,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_220100) do
   add_foreign_key "pipeline_service_definitions", "pipelines"
   add_foreign_key "pipeline_tasks", "pipeline_items"
   add_foreign_key "pipeline_tasks", "pipeline_tasks", column: "parent_task_id"
+  add_foreign_key "pipeline_whatsapp_inboxes", "inboxes", on_delete: :cascade
+  add_foreign_key "pipeline_whatsapp_inboxes", "pipelines", on_delete: :cascade
   add_foreign_key "product_variants", "products", on_delete: :cascade
   add_foreign_key "role_permissions_actions", "roles"
   add_foreign_key "scheduled_action_execution_logs", "scheduled_actions"

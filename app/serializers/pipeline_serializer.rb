@@ -35,6 +35,7 @@ module PipelineSerializer
       card_configuration: pipeline.card_configuration,
       card_configuration_revision: pipeline.card_configuration_revision,
       custom_fields: pipeline.custom_fields || {},
+      whatsapp_inboxes: whatsapp_inboxes_summary(pipeline),
       item_count: pipeline.item_count,
       deal_count: pipeline.item_count,
       conversations_count: pipeline.item_count, # Alias for frontend compatibility
@@ -70,6 +71,8 @@ module PipelineSerializer
                              task_counts_by_item || PipelineItemSerializer.task_counts_for(active_items)
                            end
 
+        conversation_summaries = Deals::ConversationSummary.batch(active_items)
+
         serialized_items = active_items.map do |item|
           PipelineItemSerializer.serialize(
             item,
@@ -79,7 +82,8 @@ module PipelineSerializer
             include_labels: include_labels,
             labels_by_title: labels_by_title,
             labels_by_id: labels_by_id,
-            task_counts_by_item: item_task_counts
+            task_counts_by_item: item_task_counts,
+            conversation_summaries_by_item: conversation_summaries
           )
         end
 
@@ -118,6 +122,16 @@ module PipelineSerializer
     end
 
     result
+  end
+
+  # Resumo dos números de WhatsApp autorizados (lista completa em /pipelines/:id/whatsapp_inboxes).
+  def whatsapp_inboxes_summary(pipeline)
+    links = pipeline.pipeline_whatsapp_inboxes.select(&:is_active)
+    {
+      configured: links.any?,
+      allowed_inbox_ids: links.map(&:inbox_id),
+      default_inbox_id: links.find(&:is_default)&.inbox_id
+    }
   end
 
   # Serialize collection of Pipelines

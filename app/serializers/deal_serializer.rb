@@ -3,7 +3,7 @@
 module DealSerializer
   extend self
 
-  def serialize(deal, include_details: true, labels_by_title: nil, task_counts_by_item: nil)
+  def serialize(deal, include_details: true, labels_by_title: nil, task_counts_by_item: nil, conversation_summaries_by_item: nil)
     labels_by_title ||= Label.all.index_by { |label| label.title.to_s.downcase }
     contacts = associated_records(deal, :contacts)
     conversations = associated_records(deal, :conversations)
@@ -18,7 +18,8 @@ module DealSerializer
       include_labels: true,
       labels_by_title: labels_by_title,
       labels_by_id: labels_by_title.values.index_by { |label| label.id.to_s },
-      task_counts_by_item: task_counts_by_item
+      task_counts_by_item: task_counts_by_item,
+      conversation_summaries_by_item: conversation_summaries_by_item || Deals::ConversationSummary.batch([deal])
     ).merge(
       deal_id: deal.id,
       title: deal.title,
@@ -50,8 +51,10 @@ module DealSerializer
     records = deals.to_a
     labels_by_title = Label.all.index_by { |label| label.title.to_s.downcase }
     task_counts_by_item = PipelineItemSerializer.task_counts_for(records)
+    conversation_summaries = Deals::ConversationSummary.batch(records)
     records.map do |deal|
-      serialize(deal, **options, labels_by_title: labels_by_title, task_counts_by_item: task_counts_by_item)
+      serialize(deal, **options, labels_by_title: labels_by_title, task_counts_by_item: task_counts_by_item,
+                conversation_summaries_by_item: conversation_summaries)
     end
   end
 

@@ -50,7 +50,8 @@ module PipelineItemSerializer
 
   def serialize(pipeline_item, include_entity: false, include_tasks_info: false,
                 include_services_info: false, include_labels: false,
-                labels_by_title: nil, labels_by_id: nil, task_counts_by_item: nil)
+                labels_by_title: nil, labels_by_id: nil, task_counts_by_item: nil,
+                conversation_summaries_by_item: nil)
     is_orphaned = if pipeline_item.conversation_id.present?
                     !pipeline_item.conversation.present?
                   elsif pipeline_item.contact_id.present?
@@ -96,6 +97,8 @@ module PipelineItemSerializer
       contact_count: pipeline_item.deal_contacts.size,
       conversation_count: pipeline_item.deal_conversations.size
     )
+    # Resumo para o cartão decidir entre "Abrir" e "Iniciar" conversa (calculado em lote pelo chamador).
+    result[:conversation_summary] = conversation_summaries_by_item[pipeline_item.id] if conversation_summaries_by_item
 
     return result if is_orphaned
     if include_entity && pipeline_item.conversation.present? &&
@@ -240,6 +243,8 @@ module PipelineItemSerializer
   def serialize_collection(pipeline_items, **options)
     return [] unless pipeline_items
 
-    pipeline_items.map { |item| serialize(item, **options) }
+    records = pipeline_items.to_a
+    summaries = options[:conversation_summaries_by_item] || Deals::ConversationSummary.batch(records)
+    records.map { |item| serialize(item, **options, conversation_summaries_by_item: summaries) }
   end
 end

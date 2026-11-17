@@ -32,6 +32,8 @@ class Pipeline < ApplicationRecord
   has_many :pipeline_items, dependent: :destroy
   has_many :conversations, through: :pipeline_items
   has_many :pipeline_service_definitions, dependent: :nullify
+  has_many :pipeline_whatsapp_inboxes, dependent: :destroy
+  has_many :whatsapp_inboxes, -> { merge(PipelineWhatsappInbox.active) }, through: :pipeline_whatsapp_inboxes, source: :inbox
 
   validate :validate_card_configuration
 
