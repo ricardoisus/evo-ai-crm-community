@@ -106,3 +106,63 @@ RSpec.describe 'Attached Evolution ingress' do
     expect(box.messages.count).to eq(0)
   end
 end
+
+RSpec.describe 'Attached Evolution ingress: contact name and photo' do
+  include ActiveJob::TestHelper
+  let(:channel) do
+    Channel::Whatsapp.create!(provider: 'evolution', phone_number: '+15550000001', provider_connection: { connection: 'open' },
+      provider_config: { instance_name: 'synthetic-vetorial', existing_instance_attached: true, attachment_state: 'active',
+                         attachment_token: 'synthetic-token', attachment_started_at: 100 })
+  end
+  let(:box) { Inbox.create!(name: 'Synthetic Vetorial', channel: channel, enable_auto_assignment: false) }
+  let(:job) { Webhooks::EvolutionAttachedJob.new }
+
+  def payload(id:, from_me: false, push_name: 'Ana Sintética', jid: '15550000002@s.whatsapp.net')
+    { instance: 'synthetic-vetorial', event: 'messages.upsert', data: {
+      key: { id: id, fromMe: from_me, remoteJid: jid }, message: { conversation: 'Olá sintético' },
+      messageTimestamp: 200, pushName: push_name
+    } }
+  end
+
+  before do
+    ActiveJob::Base.queue_adapter = :test
+    allow_any_instance_of(Channel::Whatsapp).to receive(:validate_provider_config)
+    allow(ActionCableListener.instance).to receive(:message_created)
+    allow(ActionCableListener.instance).to receive(:message_updated)
+    box
+  end
+
+  it 'names a new contact with the pushName and enqueues the photo fetch once' do
+    job.perform(channel.id, payload(id: 'n1'))
+    contact = box.contact_inboxes.sole.contact
+    expect(contact.name).to eq('Ana Sintética')
+    expect(enqueued_jobs.count { |j| j[:job] == Evolution::FetchContactAvatarJob }).to eq(1)
+    job.perform(channel.id, payload(id: 'n2'))
+    expect(enqueued_jobs.count { |j| j[:job] == Evolution::FetchContactAvatarJob }).to eq(1)
+  end
+
+  it 'fixes a contact first seen through the phone echo (named by number) when the contact writes back' do
+    job.perform(channel.id, payload(id: 'o1', from_me: true, push_name: 'Dono da linha'))
+    contact = box.contact_inboxes.sole.contact
+    expect(contact.name).to eq('15550000002')
+    job.perform(channel.id, payload(id: 'i1', push_name: 'Beatriz Real'))
+    expect(contact.reload.name).to eq('Beatriz Real')
+  end
+
+  it 'does not use the line owner pushName from outgoing echoes as the contact name' do
+    job.perform(channel.id, payload(id: 'o2', from_me: true, push_name: 'Dono da linha'))
+    expect(box.contact_inboxes.sole.contact.name).not_to eq('Dono da linha')
+  end
+
+  it 'replaces an e-mail name of a pre-existing lead matched by phone, keeping a human-edited name intact' do
+    lead = Contact.new(name: 'lauriane@example.com', phone_number: '+15550000002')
+    lead.skip_default_pipeline_assignment = true
+    lead.save!
+    job.perform(channel.id, payload(id: 'l1', push_name: 'Lauriane'))
+    expect(lead.reload.name).to eq('Lauriane')
+
+    lead.update!(name: 'Lauriane (indicação)')
+    job.perform(channel.id, payload(id: 'l2', push_name: 'Lauriane Nova'))
+    expect(lead.reload.name).to eq('Lauriane (indicação)')
+  end
+end

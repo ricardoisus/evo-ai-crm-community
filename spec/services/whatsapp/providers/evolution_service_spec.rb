@@ -21,6 +21,29 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     )
   end
 
+  describe '#fetch_contact_profile' do
+    it 'reads pushName and profilePicUrl through /chat/findContacts' do
+      response = instance_double(HTTParty::Response, success?: true,
+                                 parsed_response: [{ 'pushName' => 'Ana Real', 'profilePicUrl' => 'https://pps.whatsapp.net/a.jpg' }])
+      allow(HTTParty).to receive(:post).and_return(response)
+
+      profile = service.fetch_contact_profile('+5511999999999')
+
+      expect(profile).to eq(push_name: 'Ana Real', profile_picture_url: 'https://pps.whatsapp.net/a.jpg')
+      expect(HTTParty).to have_received(:post) do |request_url, opts|
+        expect(request_url).to eq('https://evo.example.com/chat/findContacts/test-instance')
+        expect(JSON.parse(opts[:body])).to eq('where' => { 'remoteJid' => '5511999999999@s.whatsapp.net' })
+      end
+    end
+
+    it 'returns nil on HTTP failure or empty result' do
+      allow(HTTParty).to receive(:post).and_return(instance_double(HTTParty::Response, success?: false, code: 500))
+      expect(service.fetch_contact_profile('5511999999999')).to be_nil
+      allow(HTTParty).to receive(:post).and_return(instance_double(HTTParty::Response, success?: true, parsed_response: []))
+      expect(service.fetch_contact_profile('5511999999999')).to be_nil
+    end
+  end
+
   describe '#fetch_profile_picture_url' do
     it 'POSTs the phone number to /chat/fetchProfilePictureUrl/{instance} and returns the URL' do
       response = instance_double(

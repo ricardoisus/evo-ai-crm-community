@@ -75,9 +75,18 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
       @contact.skip_default_pipeline_assignment = true
       @contact.save!
     end
-    return if @contact_inbox
+    @contact_inbox ||= ContactInbox.create!(inbox: inbox, contact: @contact, source_id: phone.delete_prefix('+'))
+    sync_observed_identity(phone.delete_prefix('+'))
+  end
 
-    @contact_inbox = ContactInbox.create!(inbox: inbox, contact: @contact, source_id: phone.delete_prefix('+'))
+  # Nome real e foto do interlocutor (também na observação passiva): só leitura
+  # no WhatsApp (fetchProfilePictureUrl); nada é enviado nem marcado como lido.
+  def sync_observed_identity(source_id)
+    sync = Whatsapp::ContactIdentitySync.new(@contact)
+    sync.sync_name(identity_push_name)
+    sync.schedule_avatar(inbox.channel, source_id)
+  rescue StandardError => e
+    Rails.logger.error "Evolution attached: identity sync failed: #{e.class}"
   end
 
   def attach_observed_media

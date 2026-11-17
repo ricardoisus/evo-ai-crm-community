@@ -313,9 +313,10 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
       }
     ).perform
 
+    Whatsapp::ContactIdentitySync.new(contact_inbox.contact).sync_name(push_name)
     schedule_evolution_avatar_fetch(channel, contact_inbox, phone_number)
 
-    Rails.logger.info "[EVOLUTION] Contact synced via webhook: #{push_name} (#{formatted_phone})"
+    Rails.logger.info "[EVOLUTION] Contact synced via webhook (#{formatted_phone})"
   rescue StandardError => e
     Rails.logger.error "[EVOLUTION] Contact sync failed for #{remote_jid}: #{e.message}"
   end
@@ -329,7 +330,7 @@ class Webhooks::WhatsappEventsJob < ApplicationJob
 
     contact = contact_inbox.contact
     return unless contact
-    return if contact.avatar.attached?
+    return unless Whatsapp::ContactIdentitySync.avatar_due?(contact)
 
     Whatsapp::EvolutionHandlers::AvatarEnqueueGuard.enqueue_avatar_fetch(
       contact_id: contact.id,

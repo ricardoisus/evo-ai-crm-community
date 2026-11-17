@@ -62,16 +62,13 @@ class Whatsapp::IncomingMessageEvolutionService < Whatsapp::IncomingMessageBaseS
 
     contact = contact_inbox.contact
 
-    # Update contact name if changed
-    if push_name.present? && contact.name != push_name
-      Rails.logger.info "Evolution API: Updating contact #{phone_number} name: #{contact.name} → #{push_name}"
-      contact.update!(name: push_name)
-    end
+    # Nome: só substitui nome provisório ou o que o próprio WhatsApp gravou antes
+    Whatsapp::ContactIdentitySync.new(contact).sync_name(push_name)
 
     # Update profile picture from explicit payload URL when present and contact has no avatar yet.
     # SSRF validation lives in Avatar::AvatarFromUrlJob; the enqueue guard prevents duplicate
     # downloads when contacts.update fires alongside messages.upsert for the same contact.
-    if profile_pic_url.present? && !contact.avatar.attached?
+    if profile_pic_url.present? && Whatsapp::ContactIdentitySync.avatar_due?(contact)
       Rails.logger.info "Evolution API: Scheduling avatar download for contact #{contact.id} from contacts.update payload"
       Whatsapp::EvolutionHandlers::AvatarEnqueueGuard.enqueue_avatar_download(contact, profile_pic_url)
     end
