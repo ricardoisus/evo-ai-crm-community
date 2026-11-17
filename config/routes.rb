@@ -642,6 +642,7 @@ Rails.application.routes.draw do
             patch :update_custom_fields
             get :acquisition, to: 'cra_acquisitions#show'
             patch :update_conversation
+            patch :status, to: 'pipeline_items#change_status'
           end
           collection do
             patch :bulk_move
@@ -677,6 +678,7 @@ Rails.application.routes.draw do
         resources :conversations, only: [:index, :create, :destroy], controller: 'deal_conversations'
         resources :files, only: [:index, :create, :destroy], controller: 'deal_files'
         resources :history, only: [:index], controller: 'deal_history'
+        member { patch :status, to: 'deals#change_status' }
         get 'conversation_status', to: 'deal_conversation_status#show'
         post 'conversation', to: 'deal_conversation_status#create'
       end

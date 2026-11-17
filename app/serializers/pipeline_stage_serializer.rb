@@ -17,7 +17,7 @@ module PipelineStageSerializer
   #
   # @return [Hash] Serialized pipeline stage ready for Oj
   #
-  def serialize(pipeline_stage, include_item_count: false)
+  def serialize(pipeline_stage, include_item_count: false, items: nil)
     result = {
       id: pipeline_stage.id,
       name: pipeline_stage.name,
@@ -32,12 +32,13 @@ module PipelineStageSerializer
     }
 
     if include_item_count
-      result[:item_count] = pipeline_stage.item_count
+      # `items`: itens já filtrados pelo status do negócio (quadro); sem ele, só abertos.
+      result[:item_count] = items ? items.size : pipeline_stage.item_count
       result[:deal_count] = result[:item_count]
       # Per-stage services total (same services_total_value the pipeline/board sum on).
       # Lets the list surface value-per-stage (e.g. the "Ganhos"/completed-stage value)
       # without loading every item into the list payload.
-      result[:total_value] = pipeline_stage.pipeline_items.sum(&:deal_value)
+      result[:total_value] = items ? items.sum { |item| item[:value].to_f } : pipeline_stage.pipeline_items.deal_open.sum(&:deal_value)
     end
 
     result

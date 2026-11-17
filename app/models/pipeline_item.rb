@@ -34,6 +34,14 @@ class PipelineItem < ApplicationRecord
   before_update :preserve_cra_acquisition_fields
   attr_accessor :lead_automation_context
 
+  # Status do negócio (R1 da repaginada 2): aberto, ganho, perdido. Não confundir com o
+  # status da CONVERSA (open/pending/resolved/snoozed). `completed_at` guarda a data do fechamento.
+  DEAL_STATUSES = %w[open won lost].freeze
+  DEAL_STATUS_ALIASES = {
+    'aberto' => 'open', 'aberta' => 'open', 'ganho' => 'won', 'ganha' => 'won', 'perdido' => 'lost', 'perdida' => 'lost',
+    'active' => 'open'
+  }.freeze
+
   LABEL_UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
 
   include Wisper::Publisher
@@ -73,10 +81,12 @@ class PipelineItem < ApplicationRecord
   validate :company_must_be_a_company
   validate :primary_contact_must_be_a_person
   validates :title, presence: true
+  validates :deal_status, inclusion: { in: DEAL_STATUSES }
   validates :currency, presence: true, length: { is: 3 }
   validates :value, numericality: { greater_than_or_equal_to: 0 }
 
   before_validation :set_default_deal_values
+  before_validation :sync_deal_status_with_completed_at
   before_save :normalize_services_data!
   after_create :create_entry_movement
   after_create :sync_legacy_associations
@@ -107,9 +117,75 @@ class PipelineItem < ApplicationRecord
   scope :in_stage, ->(stage) { where(pipeline_stage: stage) }
   scope :active, -> { where(completed_at: nil) }
   scope :completed, -> { where.not(completed_at: nil) }
+  scope :deal_open, -> { where(deal_status: 'open') }
+  scope :deal_won, -> { where(deal_status: 'won') }
+  scope :deal_lost, -> { where(deal_status: 'lost') }
+
+  # Filtro por status do negócio. Aceita open/won/lost (e aberto/ganho/perdido), `all` e, por
+  # compatibilidade com a API anterior, `completed` (= ganho ou perdido). Padrão/desconhecido: abertos.
+  def self.with_deal_status(value)
+    key = value.to_s.strip.downcase
+    key = DEAL_STATUS_ALIASES.fetch(key, key)
+    case key
+    when 'all', 'todos' then all
+    when 'completed' then where(deal_status: %w[won lost])
+    when 'won', 'lost' then where(deal_status: key)
+    else where(deal_status: 'open')
+    end
+  end
+
+  def self.normalize_deal_status(value)
+    key = value.to_s.strip.downcase
+    DEAL_STATUS_ALIASES.fetch(key, key)
+  end
+
+  def deal_open?
+    deal_status == 'open'
+  end
+
+  def deal_won?
+    deal_status == 'won'
+  end
+
+  def deal_lost?
+    deal_status == 'lost'
+  end
+
+  # Ponto único para API: target aceita open/won/lost (e aberto/ganho/perdido). Devolve false se inválido.
+  def change_deal_status!(target, reason: nil, actor: Current.user)
+    case self.class.normalize_deal_status(target)
+    when 'won' then mark_won!(actor: actor)
+    when 'lost' then mark_lost!(reason: reason, actor: actor)
+    when 'open' then reopen!(actor: actor)
+    else return false
+    end
+    true
+  end
+
+  # Marca como ganho. Idempotente para o mesmo status; ganho<->perdido passa direto (registra histórico).
+  def mark_won!(actor: Current.user, source: nil)
+    close_deal!('won', actor: actor, source: source)
+  end
+
+  def mark_lost!(reason: nil, actor: Current.user, source: nil)
+    close_deal!('lost', reason: reason, actor: actor, source: source)
+  end
+
+  def reopen!(actor: Current.user, source: nil)
+    with_lock do
+      return self if deal_open?
+
+      previous = deal_status
+      update!(deal_status: 'open', completed_at: nil, closed_by_id: nil, lost_reason: nil)
+      record_history!('deal_reopened', actor: actor, source: source || (actor ? 'user' : 'system'),
+                                       changes: { deal_status: { previous: previous, current: 'open' } })
+    end
+    self
+  end
 
   def move_to_stage(new_stage, _moved_by = nil)
     return false if new_stage.pipeline != pipeline
+    return false unless deal_open?
 
     pipeline_stage
     self.pipeline_stage = new_stage
@@ -332,6 +408,7 @@ class PipelineItem < ApplicationRecord
       custom_fields: LeadAutomations::CraProjection.egress(custom_fields),
       entered_at: entered_at.to_i,
       completed_at: completed_at&.to_i,
+      deal_status: deal_status,
       days_in_pipeline: days_in_pipeline,
       services_total: services_total_value
     }
@@ -358,6 +435,8 @@ class PipelineItem < ApplicationRecord
       custom_fields: LeadAutomations::CraProjection.egress(custom_fields),
       entered_at: entered_at,
       completed_at: completed_at,
+      deal_status: deal_status,
+      lost_reason: lost_reason,
       assigned_by_id: assigned_by_id,
       created_at: created_at,
       updated_at: updated_at,
@@ -367,6 +446,30 @@ class PipelineItem < ApplicationRecord
   end
 
   private
+
+  def close_deal!(status, reason: nil, actor: Current.user, source: nil)
+    with_lock do
+      return self if deal_status == status && (status == 'won' || reason.blank?)
+
+      previous = deal_status
+      attrs = { deal_status: status, closed_by_id: actor&.id, lost_reason: status == 'lost' ? reason.to_s.strip.presence : nil }
+      attrs[:completed_at] = Time.current if completed_at.blank?
+      update!(attrs)
+      changes = { deal_status: { previous: previous, current: status } }
+      changes[:lost_reason] = { previous: nil, current: lost_reason } if lost_reason.present?
+      record_history!("deal_#{status}", actor: actor, source: source || (actor ? 'user' : 'system'), changes: changes)
+    end
+    self
+  end
+
+  # Mantém deal_status e completed_at coerentes por qualquer caminho de gravação.
+  def sync_deal_status_with_completed_at
+    if deal_status == 'open'
+      self.completed_at = nil if completed_at.present? && will_save_change_to_deal_status?
+    elsif completed_at.blank?
+      self.completed_at = Time.current
+    end
+  end
 
   def preserve_cra_acquisition_fields
     return unless will_save_change_to_custom_fields?

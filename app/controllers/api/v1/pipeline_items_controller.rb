@@ -8,11 +8,11 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
   # view level.
   WRITE_ACTIONS = %w[
     create update destroy bulk_move move_conversation
-    move_to_stage update_conversation update_custom_fields
+    move_to_stage update_conversation update_custom_fields change_status
   ].freeze
 
   before_action :set_pipeline
-  before_action :set_pipeline_item, only: [:update, :destroy, :move_to_stage, :update_conversation, :update_custom_fields]
+  before_action :set_pipeline_item, only: [:update, :destroy, :move_to_stage, :update_conversation, :update_custom_fields, :change_status]
   before_action :ensure_authorized_user
 
   def index
@@ -318,7 +318,31 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
   end
 
   # rubocop:disable Metrics/MethodLength
+  # PATCH /pipelines/:pipeline_id/pipeline_items/:id/status
+  # Body: { status: 'won'|'lost'|'open' (aceita ganho/perdido/aberto), lost_reason?: string }
+  # Mesmo RBAC de editar o negócio (pipelines update). Registra data/usuário e histórico.
+  def change_status
+    unless @pipeline_item.change_deal_status!(params[:status], reason: params[:lost_reason])
+      return error_response(ApiErrorCodes::VALIDATION_ERROR, 'Status inválido: use open, won ou lost',
+                            status: :unprocessable_entity)
+    end
+
+    success_response(
+      data: PipelineItemSerializer.serialize(@pipeline_item.reload, include_entity: false),
+      message: 'Deal status updated successfully'
+    )
+  rescue ActiveRecord::RecordInvalid => e
+    error_response(ApiErrorCodes::VALIDATION_ERROR, e.message, details: format_validation_errors(e.record.errors),
+                                                               status: :unprocessable_entity)
+  end
+
   def move_to_stage
+    unless @pipeline_item.deal_open?
+      return error_response(ApiErrorCodes::BUSINESS_RULE_VIOLATION,
+                            'Negócio ganho ou perdido não pode mudar de etapa; reabra antes',
+                            status: :unprocessable_entity)
+    end
+
     begin
       new_stage = @pipeline.pipeline_stages.find(params[:new_stage_id])
     rescue ActiveRecord::RecordNotFound
@@ -676,15 +700,9 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
   end
 
   def apply_filters
-    # Status filter: active (default), completed, all
-    case params[:status]
-    when 'completed'
-      @pipeline_items = @pipeline_items.where.not(completed_at: nil)
-    when 'all'
-      # no filter
-    else
-      @pipeline_items = @pipeline_items.where(completed_at: nil)
-    end
+    # Status do negócio: open (padrão), won, lost, all (aceita aberto/ganho/perdido e, por compatibilidade,
+    # active = open e completed = ganho+perdido). `deal_status` tem precedência sobre o `status` legado.
+    @pipeline_items = @pipeline_items.with_deal_status(params[:deal_status].presence || params[:status])
 
     # Temporal filters for completed/lost items
     # completed_after: ISO8601 date — items completed after this date

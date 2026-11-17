@@ -54,7 +54,8 @@ class Api::V1::PipelinesController < Api::V1::BaseController
         include_items: true,
         include_tasks_info: true,
         include_services_info: true,
-        include_labels: true
+        include_labels: true,
+        deal_status: params[:deal_status].presence || 'open'
       ),
       message: 'Pipeline retrieved successfully'
     )

@@ -2,12 +2,12 @@
 
 class Api::V1::DealsController < Api::V1::BaseController
   before_action :set_pipeline, only: [:index, :create]
-  before_action :set_deal, only: [:show, :update, :destroy]
+  before_action :set_deal, only: [:show, :update, :destroy, :change_status]
   before_action :authorize_read, only: [:index, :show]
-  before_action :authorize_write, only: [:create, :update, :destroy]
+  before_action :authorize_write, only: [:create, :update, :destroy, :change_status]
 
   def index
-    deals = deal_scope.where(pipeline: @pipeline).order(updated_at: :desc)
+    deals = deal_scope.where(pipeline: @pipeline).with_deal_status(params[:deal_status]).order(updated_at: :desc)
     success_response(data: DealSerializer.serialize_collection(deals, include_details: false), message: 'Deals retrieved successfully')
   end
 
@@ -36,6 +36,9 @@ class Api::V1::DealsController < Api::V1::BaseController
     attributes = deal_params.except(:contact_ids, :conversation_ids, :labels)
     PipelineItem.transaction do
       if attributes[:pipeline_stage_id].present?
+        unless @deal.deal_open?
+          raise ActiveRecord::RecordInvalid, @deal.tap { |d| d.errors.add(:base, 'Negócio ganho ou perdido não pode mudar de etapa; reabra antes') }
+        end
         stage = @deal.pipeline.pipeline_stages.find(attributes.delete(:pipeline_stage_id))
         @deal.move_to_stage(stage, Current.user)
       end
@@ -43,6 +46,17 @@ class Api::V1::DealsController < Api::V1::BaseController
       @deal.update_deal_labels!(deal_params[:labels]) if deal_params.key?(:labels)
     end
     success_response(data: DealSerializer.serialize(reload_deal), message: 'Deal updated successfully')
+  rescue ActiveRecord::RecordInvalid => e
+    validation_error(e)
+  end
+
+  # PATCH /deals/:id/status  { status: 'won'|'lost'|'open', lost_reason? } — mesmo RBAC de editar o negócio.
+  def change_status
+    unless @deal.change_deal_status!(params[:status], reason: params[:lost_reason])
+      return error_response(ApiErrorCodes::VALIDATION_ERROR, 'Status inválido: use open, won ou lost',
+                            status: :unprocessable_entity)
+    end
+    success_response(data: DealSerializer.serialize(reload_deal), message: 'Deal status updated successfully')
   rescue ActiveRecord::RecordInvalid => e
     validation_error(e)
   end

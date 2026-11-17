@@ -86,12 +86,23 @@ class Pipeline < ApplicationRecord
     )
   end
   
+  # Contagens e valores do funil consideram só negócios ABERTOS (ganho/perdido saem do quadro).
   def item_count
-    pipeline_items.count
+    pipeline_items.loaded? ? pipeline_items.count(&:deal_open?) : pipeline_items.deal_open.count
+  end
+
+  def deal_status_counts
+    counts = if pipeline_items.loaded?
+               pipeline_items.group_by(&:deal_status).transform_values(&:size)
+             else
+               pipeline_items.group(:deal_status).count
+             end
+    PipelineItem::DEAL_STATUSES.index_with { |status| counts.fetch(status, 0) }
   end
 
   def stage_counts
     pipeline_stages.left_joins(:pipeline_items)
+                   .where("pipeline_items.id IS NULL OR pipeline_items.deal_status = 'open'")
                    .group(:id, :name)
                    .count('pipeline_items.id')
   end
@@ -101,14 +112,14 @@ class Pipeline < ApplicationRecord
   # CONTAGEM; sem isto, qualquer relatório financeiro (inclusive o do assistente) conclui
   # "não há valores". services_total_value já existe no PipelineItem.
   def total_value
-    pipeline_items.sum(&:deal_value)
+    pipeline_items.select(&:deal_open?).sum(&:deal_value)
   end
 
   # Valor agregado POR ETAPA (stage_id/name => soma dos serviços dos itens daquela etapa).
   # Espelha stage_counts, mas com dinheiro em vez de contagem.
   def stage_values
     pipeline_stages.each_with_object({}) do |stage, acc|
-      acc[stage.name] = stage.pipeline_items.sum(&:deal_value)
+      acc[stage.name] = stage.pipeline_items.deal_open.sum(&:deal_value)
     end
   end
 
