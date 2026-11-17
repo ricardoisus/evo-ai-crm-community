@@ -16,13 +16,17 @@ module Pipelines
 
     # Estado de conexão do canal: desconhecido (sem snapshot) conta como conectado, para não
     # bloquear canais cujo provedor não reporta estado (Cloud API).
+    DISCONNECTED_STATES = %w[close closed disconnected logout].freeze
+
     def self.channel_connected?(inbox)
       channel = inbox.channel
       return false if channel.nil?
       return false if channel.respond_to?(:reauthorization_required?) && channel.reauthorization_required?
 
       connection = channel.provider_connection.is_a?(Hash) ? channel.provider_connection['connection'] : nil
-      connection.blank? || connection == 'open'
+      # Só o estado explicitamente desligado bloqueia. "connecting" costuma ficar preso no snapshot de
+      # canais anexados/observados que seguem recebendo mensagens (caixa Vetorial em produção).
+      !DISCONNECTED_STATES.include?(connection.to_s.downcase)
     end
 
     def self.inbox_data(inbox)

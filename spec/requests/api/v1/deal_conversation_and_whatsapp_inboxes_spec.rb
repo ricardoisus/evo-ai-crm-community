@@ -267,6 +267,10 @@ RSpec.describe 'Deal conversation + pipeline WhatsApp inboxes', type: :request d
       post "/api/v1/deals/#{d2.id}/conversation", as: :json
       expect(response.parsed_body.dig('error', 'code')).to eq('CONTACT_WITHOUT_PHONE')
 
+      # "connecting" preso no snapshot não bloqueia (canal observado que segue recebendo mensagens)
+      inbox_a.channel.update_columns(provider_connection: { 'connection' => 'connecting' }) # rubocop:disable Rails/SkipsModelValidations
+      expect(Pipelines::WhatsappInboxSettings.channel_connected?(inbox_a.reload)).to be(true)
+
       inbox_a.channel.update_columns(provider_connection: { 'connection' => 'close' }) # rubocop:disable Rails/SkipsModelValidations
       post "/api/v1/deals/#{deal.id}/conversation", as: :json
       expect(response).to have_http_status(:conflict)
