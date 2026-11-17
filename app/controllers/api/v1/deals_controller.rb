@@ -83,7 +83,6 @@ class Api::V1::DealsController < Api::V1::BaseController
       :deal_contacts, :deal_conversations, :tasks, :scheduled_actions, :stage_movements,
       :deal_history_events, attachments: { file_attachment: :blob },
       owner: { avatar_attachment: :blob },
-      company: [:labels, { avatar_attachment: :blob }],
       contact: [:labels, { avatar_attachment: :blob }],
       primary_contact: [:labels, { avatar_attachment: :blob }],
       contacts: [:labels, { avatar_attachment: :blob }],
@@ -107,7 +106,7 @@ class Api::V1::DealsController < Api::V1::BaseController
 
   def deal_params
     source = params[:deal].presence || params
-    source.permit(:title, :value, :currency, :notes, :owner_id, :company_id, :primary_contact_id,
+    source.permit(:title, :value, :currency, :notes, :owner_id, :primary_contact_id,
                   :pipeline_stage_id, contact_ids: [], conversation_ids: [], labels: [], custom_fields: {})
   end
 

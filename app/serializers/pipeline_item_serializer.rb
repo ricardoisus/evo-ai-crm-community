@@ -95,7 +95,6 @@ module PipelineItemSerializer
         name: pipeline_item.owner.name,
         avatar_url: pipeline_item.owner.avatar_url
       },
-      company: pipeline_item.company && ContactSerializer.serialize(pipeline_item.company, include_labels: false),
       primary_contact_id: pipeline_item.primary_contact_id,
       contact_count: pipeline_item.deal_contacts.size,
       conversation_count: pipeline_item.deal_conversations.size

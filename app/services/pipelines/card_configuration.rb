@@ -4,7 +4,7 @@ module Pipelines
   module CardConfiguration
     NATIVE = {
       'title' => 'Título', 'value' => 'Valor', 'contact' => 'Contato',
-      'company' => 'Empresa', 'owner' => 'Responsável', 'labels' => 'Etiquetas',
+      'owner' => 'Responsável', 'labels' => 'Etiquetas',
       'channel_origin' => 'Canal e origem', 'utm' => 'Campanha (UTM)',
       'stage_age' => 'Tempo na etapa', 'last_activity' => 'Última atividade',
       'last_message' => 'Última mensagem', 'next_task' => 'Próxima tarefa',

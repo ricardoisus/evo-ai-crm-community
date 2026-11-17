@@ -27,7 +27,6 @@ module DealSerializer
       currency: deal.currency,
       notes: deal.notes,
       owner: user_data(deal.owner),
-      company: contact_data(deal.company, labels_by_title: labels_by_title),
       primary_contact: contact_data(primary_contact, include_labels: true, labels_by_title: labels_by_title),
       contact_count: contacts.length,
       conversation_count: conversations.length,
