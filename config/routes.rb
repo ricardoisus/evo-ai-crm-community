@@ -667,6 +667,9 @@ Rails.application.routes.draw do
           end
         end
         resources :pipeline_service_definitions, except: [:new, :edit], controller: 'pipeline_service_definitions'
+        get 'whatsapp_inboxes', to: 'pipeline_whatsapp_inboxes#index'
+        put 'whatsapp_inboxes', to: 'pipeline_whatsapp_inboxes#update'
+        patch 'whatsapp_inboxes/default', to: 'pipeline_whatsapp_inboxes#default'
       end
 
       resources :deals, only: [:show, :update, :destroy], controller: 'deals' do
@@ -674,6 +677,8 @@ Rails.application.routes.draw do
         resources :conversations, only: [:index, :create, :destroy], controller: 'deal_conversations'
         resources :files, only: [:index, :create, :destroy], controller: 'deal_files'
         resources :history, only: [:index], controller: 'deal_history'
+        get 'conversation_status', to: 'deal_conversation_status#show'
+        post 'conversation', to: 'deal_conversation_status#create'
       end
 
       namespace :integrations do

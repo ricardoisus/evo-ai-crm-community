@@ -129,6 +129,10 @@ class Conversation < ApplicationRecord
   has_many :pipelines, through: :pipeline_items
 
   before_save :ensure_snooze_until_reset
+  # Conversa iniciada a partir de um negócio (Deals::ConversationService): o próprio negócio já a vincula;
+  # não deixa o auto-assign criar/promover outro card em pipeline padrão.
+  attr_accessor :skip_pipeline_auto_assignment
+
   before_create :ensure_display_id
   before_create :determine_conversation_status
   before_create :ensure_waiting_since
@@ -139,7 +143,7 @@ class Conversation < ApplicationRecord
   after_create_commit :notify_conversation_creation, unless: :imported?
   after_create_commit :load_attributes_created_by_db_triggers
   after_create_commit :publish_conversation_created, unless: :imported?
-  after_create_commit :assign_to_default_pipeline, unless: :imported?
+  after_create_commit :assign_to_default_pipeline, unless: -> { imported? || skip_pipeline_auto_assignment }
   after_update_commit :publish_conversation_updated
   after_update_commit :publish_conversation_resolved
   after_destroy_commit :publish_conversation_deleted
