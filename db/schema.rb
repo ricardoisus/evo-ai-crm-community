@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_17_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1138,15 +1138,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_140000) do
     t.uuid "owner_id"
     t.uuid "company_id"
     t.uuid "primary_contact_id"
+    t.string "deal_status", default: "open", null: false
+    t.text "lost_reason"
+    t.uuid "closed_by_id"
     t.index ["company_id"], name: "index_pipeline_items_on_company_id"
     t.index ["contact_id", "pipeline_id"], name: "index_pipeline_items_on_contact_and_pipeline"
     t.index ["contact_id"], name: "index_pipeline_items_on_contact_id"
     t.index ["conversation_id", "pipeline_id"], name: "index_pipeline_items_on_conversation_and_pipeline"
     t.index ["custom_fields"], name: "index_pipeline_items_on_custom_fields", using: :gin
     t.index ["owner_id"], name: "index_pipeline_items_on_owner_id"
+    t.index ["pipeline_id", "deal_status"], name: "idx_pipeline_items_pipeline_deal_status"
     t.index ["pipeline_id"], name: "index_pipeline_items_on_pipeline_id"
     t.index ["pipeline_stage_id"], name: "index_pipeline_items_on_pipeline_stage_id"
     t.index ["primary_contact_id"], name: "index_pipeline_items_on_primary_contact_id"
+    t.check_constraint "deal_status::text = ANY (ARRAY['open'::character varying, 'won'::character varying, 'lost'::character varying]::text[])", name: "chk_pipeline_items_deal_status"
   end
 
   create_table "pipeline_service_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1822,6 +1827,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_140000) do
   add_foreign_key "pipeline_items", "conversations"
   add_foreign_key "pipeline_items", "pipeline_stages"
   add_foreign_key "pipeline_items", "pipelines"
+  add_foreign_key "pipeline_items", "users", column: "closed_by_id", on_delete: :nullify
   add_foreign_key "pipeline_items", "users", column: "owner_id"
   add_foreign_key "pipeline_service_definitions", "pipelines"
   add_foreign_key "pipeline_tasks", "pipeline_items"

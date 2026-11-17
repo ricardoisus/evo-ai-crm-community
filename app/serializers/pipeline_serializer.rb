@@ -22,7 +22,7 @@ module PipelineSerializer
   def serialize(pipeline, include_stages: false, include_items: false,
                 include_tasks_info: false, include_services_info: false,
                 include_labels: false, labels_by_title: nil, labels_by_id: nil,
-                task_counts_by_item: nil, include_card_definitions: true)
+                task_counts_by_item: nil, include_card_definitions: true, deal_status: 'open')
     result = {
       id: pipeline.id,
       name: pipeline.name,
@@ -39,6 +39,7 @@ module PipelineSerializer
       item_count: pipeline.item_count,
       deal_count: pipeline.item_count,
       conversations_count: pipeline.item_count, # Alias for frontend compatibility
+      deal_status_counts: pipeline.deal_status_counts,
       created_at: pipeline.created_at&.iso8601,
       updated_at: pipeline.updated_at&.iso8601
     }
@@ -61,8 +62,11 @@ module PipelineSerializer
           labels_by_id ||= all_labels.index_by { |label| label.id.to_s }
         end
 
-        # Serialize only active items (completed journeys are accessible via pipeline_items endpoint with status=completed)
-        active_items = pipeline.pipeline_items.select { |item| item.completed_at.nil? }
+        # Itens do quadro filtrados pelo status do negócio (padrão: só abertos; open/won/lost/all).
+        status_filter = PipelineItem.normalize_deal_status(deal_status)
+        active_items = pipeline.pipeline_items.select do |item|
+          %w[all todos].include?(status_filter) || item.deal_status == (PipelineItem::DEAL_STATUSES.include?(status_filter) ? status_filter : 'open')
+        end
 
         # Batch task counts once for this pipeline's active items to avoid the
         # 5-COUNT-per-item N+1 inside PipelineItemSerializer. Caller can override
@@ -92,9 +96,10 @@ module PipelineSerializer
 
         # Serialize stages with items already included
         result[:stages] = ordered_stages.map do |stage|
-          stage_data = PipelineStageSerializer.serialize(stage, include_item_count: true)
+          stage_items = items_by_stage[stage.id] || []
+          stage_data = PipelineStageSerializer.serialize(stage, include_item_count: true, items: stage_items)
           # Include items directly in the stage
-          stage_data[:items] = items_by_stage[stage.id] || []
+          stage_data[:items] = stage_items
           stage_data[:deals] = stage_data[:items]
           stage_data
         end
