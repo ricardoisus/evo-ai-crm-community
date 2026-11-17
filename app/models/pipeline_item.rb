@@ -78,7 +78,6 @@ class PipelineItem < ApplicationRecord
   has_many :product_variants, through: :pipeline_item_products
 
   validate :validate_custom_fields_structure
-  validate :company_must_be_a_company
   validate :primary_contact_must_be_a_person
   validates :title, presence: true
   validates :deal_status, inclusion: { in: DEAL_STATUSES }
@@ -197,12 +196,6 @@ class PipelineItem < ApplicationRecord
   end
 
   def attach_contact!(new_contact, actor: Current.user, source: 'user')
-    if new_contact.type == 'company'
-      update!(company: new_contact)
-      record_history!('company_associated', actor: actor, source: source, metadata: { company_id: new_contact.id })
-      return new_contact
-    end
-
     link = deal_contacts.find_or_create_by!(contact: new_contact)
     update!(primary_contact: new_contact, contact_id: new_contact.id) if primary_contact_id.blank?
     if link.previously_new_record?
@@ -398,7 +391,6 @@ class PipelineItem < ApplicationRecord
       conversation_id: conversation_id,
       contact_id: contact_id,
       primary_contact_id: primary_contact_id,
-      company_id: company_id,
       owner_id: owner_id,
       title: title,
       value: deal_value,
@@ -423,7 +415,6 @@ class PipelineItem < ApplicationRecord
       conversation_id: conversation_id,
       contact_id: contact_id,
       primary_contact_id: primary_contact_id,
-      company_id: company_id,
       owner_id: owner_id,
       title: title,
       value: deal_value&.to_f,
@@ -505,10 +496,6 @@ class PipelineItem < ApplicationRecord
     self.title = "Negócio - #{contact_name || conversation&.display_id || id || 'Nova oportunidade'}"
   end
 
-  def company_must_be_a_company
-    errors.add(:company, 'must be a company contact') if company && company.type != 'company'
-  end
-
   def primary_contact_must_be_a_person
     errors.add(:primary_contact, 'must be a person contact') if primary_contact && primary_contact.type != 'person'
   end
@@ -527,7 +514,7 @@ class PipelineItem < ApplicationRecord
 
   def record_update_history
     audited = previous_changes.slice(
-      'title', 'value', 'currency', 'notes', 'owner_id', 'company_id', 'primary_contact_id', 'custom_fields'
+      'title', 'value', 'currency', 'notes', 'owner_id', 'primary_contact_id', 'custom_fields'
     )
     return if audited.empty?
 
