@@ -23,3 +23,5 @@ Rails.application.config.filter_parameters += [:apikey, :data]
 
 # Lead intake and acquisition signals must not enter request logs.
 Rails.application.config.filter_parameters += [:authorization, :contact, :page_url, :ctwa_clid, :ctwaClid, :lead_acquisition]
+
+Rails.application.config.filter_parameters += [:phone_number, :visitor_id, :first_touch, :last_touch, :acquisition, :consent, :contact_consent, :headline, :source_url, :resolution]

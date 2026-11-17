@@ -21,6 +21,8 @@ module LeadAutomations
         Rails.logger.warn('[LEAD_AUTOMATION] extraction_failed')
         nil
       end
+      scoped = CraAcquisition.rule_for(inbox)
+      signal = CraSignalExtractor.call(raw, inbox: inbox, params: params) if scoped && CraAcquisition.enabled?
       Message.transaction do
         if signal
           message.content_attributes = message.content_attributes.merge('lead_acquisition' => {
@@ -30,8 +32,13 @@ module LeadAutomations
         message.save!
         if signal
           received = Time.iso8601(params[:lead_automation_received_at].to_s) rescue Time.current
-          call(contact: message.conversation.contact, conversation: message.conversation, message: message,
-               received_at: received, **signal)
+          if scoped
+            CaptureScopedEvent.call(contact: message.conversation.contact, conversation: message.conversation,
+                                    message: message, received_at: received, **signal) if CraAcquisition.enabled?
+          else
+            call(contact: message.conversation.contact, conversation: message.conversation, message: message,
+                 received_at: received, **signal)
+          end
         end
       end
     end

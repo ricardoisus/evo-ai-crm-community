@@ -53,7 +53,7 @@ class Evolution::AttachExistingInstance
   private
 
   def validate_input!
-    valid = @instance.match?(/\A[a-zA-Z0-9_-]+\z/) && @phone.match?(/\A\+\d{10,15}\z/) && @name.present?
+    valid = Evolution::ExistingInstanceClient.valid_name?(@instance) && @phone.match?(/\A\+\d{10,15}\z/) && @name.present?
     raise Conflict, 'Instância, número ou nome inválido' unless valid
   end
 

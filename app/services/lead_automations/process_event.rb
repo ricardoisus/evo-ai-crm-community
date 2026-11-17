@@ -12,7 +12,7 @@ module LeadAutomations
       contact.with_lock do
         event.lock!
         return if event.status == 'processed'
-        rules = LeadAutomationRule.where(deleted_at: nil)
+        rules = LeadAutomationRule.where(deleted_at: nil, acquisition_scope_key: nil)
         rules = rules.where(id: event.signal['rule_id']) if event.source == 'domain'
         errors = rules.order(:id).map { |rule| process_rule(rule, contact, event) }
         event.update!(status: errors.include?(true) ? 'failed' : 'processed', attempts: event.attempts + 1,

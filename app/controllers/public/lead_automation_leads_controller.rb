@@ -14,6 +14,13 @@ class Public::LeadAutomationLeadsController < ActionController::API
     body = request.body.read(16_385)
     return head :unprocessable_entity if body.bytesize > 16_384
     payload = JSON.parse(body)
+    if rule.cra_scoped?
+      return head :service_unavailable unless LeadAutomations::CraAcquisition.enabled?
+      return head :bad_request unless LeadAutomations::CraAcquisition.intake?(payload, request.headers['Idempotency-Key'])
+      LeadAutomations::ScopedIntake.call(rule, payload)
+      cors
+      return render json: { accepted: true, event_id: payload['event_id'] }, status: :accepted
+    end
     return head :unprocessable_entity unless valid_payload?(payload, rule)
     event_id = payload['event_id']
     key = "intake:#{rule.id}:#{event_id}"

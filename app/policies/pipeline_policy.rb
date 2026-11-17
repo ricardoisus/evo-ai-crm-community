@@ -21,6 +21,7 @@ class PipelinePolicy < ApplicationPolicy
   end
 
   def show?
+    return false unless LeadAutomations::CraAccess.allowed?(record, @user)
     # Administrators or users with pipelines.read permission can view pipelines
     @user&.administrator? || @user&.has_permission?('pipelines.read')
   end
@@ -36,6 +37,7 @@ class PipelinePolicy < ApplicationPolicy
   end
 
   def update?
+    return false unless LeadAutomations::CraAccess.allowed?(record, @user)
     # Administrators or users with pipelines.update permission can update pipelines
     @user&.administrator? || @user&.has_permission?('pipelines.update')
   end

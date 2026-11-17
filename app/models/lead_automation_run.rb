@@ -1,6 +1,8 @@
 class LeadAutomationRun < ApplicationRecord
   belongs_to :rule, class_name: 'LeadAutomationRule'
-  belongs_to :event, class_name: 'LeadAutomationEvent'
+  belongs_to :event, class_name: 'LeadAutomationEvent', optional: true
+  belongs_to :scope_event, class_name: 'LeadAcquisitionScopeEvent', optional: true
+  validate { errors.add(:base, 'event_required') unless event_id.present? ^ scope_event_id.present? }
   validates :contact_id, :rule_revision, :executed_at, presence: true
   validates :contact_id, uniqueness: { scope: :rule_id }
   validates :status, inclusion: { in: %w[created existing skipped error] }

@@ -12,18 +12,28 @@ class Evolution::ExistingInstanceClient
   end
 
   def instances(name)
-    request(:get, "/instance/fetchInstances?instanceName=#{ERB::Util.url_encode(name)}")
+    request(:get, "/instance/fetchInstances?instanceName=#{segment(name)}")
   end
 
   def webhook(name)
-    request(:get, "/webhook/find/#{ERB::Util.url_encode(name)}")
+    request(:get, "/webhook/find/#{segment(name)}")
   end
 
   def set_webhook(name, config)
-    request(:post, "/webhook/set/#{ERB::Util.url_encode(name)}", { webhook: config })
+    request(:post, "/webhook/set/#{segment(name)}", { webhook: config })
   end
 
   private
+
+  def segment(name)
+    raise Error, 'Nome de instância inválido' unless self.class.valid_name?(name)
+    name.bytes.map { |b| b.chr.match?(/[A-Za-z0-9_.~-]/) ? b.chr : format('%%%02X', b) }.join
+  end
+
+  def self.valid_name?(name)
+    name.is_a?(String) && name.valid_encoding? && name.length.between?(1, 100) && name == name.strip &&
+      !%w[. ..].include?(name) && !name.match?(/[\x00-\x1f\x7f\/\\?#%]/)
+  end
 
   def request(method, path, body = nil)
     uri = URI.parse(@base + path)

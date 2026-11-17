@@ -31,6 +31,7 @@
 #  fk_rails_...  (pipeline_stage_id => pipeline_stages.id)
 #
 class PipelineItem < ApplicationRecord
+  before_update :preserve_cra_acquisition_fields
   attr_accessor :lead_automation_context
 
   LABEL_UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
@@ -328,7 +329,7 @@ class PipelineItem < ApplicationRecord
       currency: currency,
       is_lead: lead?,
       pipeline_stage: pipeline_stage.push_event_data,
-      custom_fields: custom_fields,
+      custom_fields: LeadAutomations::CraProjection.egress(custom_fields),
       entered_at: entered_at.to_i,
       completed_at: completed_at&.to_i,
       days_in_pipeline: days_in_pipeline,
@@ -354,7 +355,7 @@ class PipelineItem < ApplicationRecord
       is_lead: lead?,
       pipeline_stage_id: pipeline_stage_id,
       pipeline_stage_name: pipeline_stage.name,
-      custom_fields: custom_fields,
+      custom_fields: LeadAutomations::CraProjection.egress(custom_fields),
       entered_at: entered_at,
       completed_at: completed_at,
       assigned_by_id: assigned_by_id,
@@ -366,6 +367,23 @@ class PipelineItem < ApplicationRecord
   end
 
   private
+
+  def preserve_cra_acquisition_fields
+    return unless will_save_change_to_custom_fields?
+    old = custom_fields_in_database || {}
+    return unless old['cra_projection']
+    fields = (custom_fields || {}).deep_dup
+    manual = Array(old['cra_manual_fields'])
+    old.keys.grep(/\Acra_/).each do |key|
+      if LeadAutomations::CraProjection::TECHNICAL.include?(key) || LeadAutomations::CraProjection::STRUCTURED.include?(key)
+        fields[key] = old[key]
+      elsif fields[key] != old[key]
+        manual |= [key]
+      end
+    end
+    fields['cra_manual_fields'] = manual
+    self.custom_fields = fields
+  end
 
   def resolve_deal_label_titles(labels)
     tokens = Array(labels).map { |label| label.to_s.strip }.reject(&:blank?)

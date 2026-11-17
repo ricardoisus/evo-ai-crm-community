@@ -357,7 +357,7 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
   def update_custom_fields
     @pipeline_item.update!(custom_fields: params[:custom_fields])
     success_response(
-      data: { custom_fields: @pipeline_item.custom_fields },
+      data: { custom_fields: LeadAutomations::CraProjection.egress(@pipeline_item.custom_fields, pipeline: @pipeline_item.pipeline) },
       message: 'Custom fields updated successfully'
     )
   rescue ActiveRecord::RecordInvalid => e
