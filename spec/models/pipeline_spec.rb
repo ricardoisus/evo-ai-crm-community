@@ -23,6 +23,8 @@ RSpec.describe Pipeline, type: :model do
   end
 
   describe '.accessible_by' do
+    after { Current.reset }
+
     let!(:default_private_pipeline) do
       described_class.create!(
         name: 'Default Pipeline',
@@ -80,6 +82,39 @@ RSpec.describe Pipeline, type: :model do
 
       it 'includes own pipelines (AC4)' do
         expect(accessible).to include(owner_pipeline)
+      end
+    end
+
+    context 'when queried by an administrator who did not create the pipelines' do
+      subject(:accessible) { Pipeline.accessible_by(account_owner) }
+
+      %w[super_admin account_owner administrator admin].each do |role_key|
+        it "includes private pipelines created by another user for role #{role_key}" do
+          Current.evo_role_key = role_key
+
+          expect(accessible).to include(
+            default_private_pipeline, private_pipeline, public_pipeline, owner_pipeline
+          )
+        end
+      end
+
+      it 'still returns an ActiveRecord relation that can be chained' do
+        Current.evo_role_key = 'super_admin'
+
+        expect(accessible.active.order(:name)).to be_a(ActiveRecord::Relation)
+      end
+    end
+
+    context 'when queried by a non-administrator role' do
+      subject(:accessible) { Pipeline.accessible_by(account_owner) }
+
+      %w[agent agent_restricted].each do |role_key|
+        it "keeps excluding private pipelines from other users for role #{role_key}" do
+          Current.evo_role_key = role_key
+
+          expect(accessible).not_to include(private_pipeline)
+          expect(accessible).to include(default_private_pipeline, public_pipeline, owner_pipeline)
+        end
       end
     end
 
