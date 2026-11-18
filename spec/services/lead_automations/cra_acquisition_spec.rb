@@ -54,6 +54,7 @@ RSpec.describe 'CRA scoped acquisition' do
     expect(deal.custom_fields).to include('cra_source' => 'ctwa')
     p = payload(e); enrich(p)
     expect(deal.reload.custom_fields).to include('cra_campaign_name' => 'Synthetic campaign', 'cra_ad_id' => '123')
+    expect(deal.reload.custom_fields).to include('utm_campaign' => 'Synthetic campaign', 'utm_source' => 'meta', 'utm_medium' => 'ctwa')
     expect(deal.owner_id).to eq(user.id)
     expect(deal.custom_fields.to_json).not_to include('synthetic-ctwa')
     expect(box.messages.sole.content_attributes_for_egress.to_json).not_to include('synthetic-ctwa')
