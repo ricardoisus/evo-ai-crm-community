@@ -50,7 +50,14 @@ class Pipeline < ApplicationRecord
 
   scope :active, -> { where(is_active: true) }
   scope :default, -> { where(is_default: true) }
+  # Administradores (super_admin, account_owner, administrator, admin — ver
+  # UserAttributeHelpers#administrator?) enxergam todos os pipelines, inclusive
+  # os privados criados por outros usuários. A regra depende de
+  # Current.evo_role_key (preenchido a cada requisição autenticada); fora de uma
+  # requisição ele é nil e o escopo cai no comportamento restrito.
   scope :accessible_by, lambda { |user|
+    next all if user&.administrator?
+
     where(visibility: :public)
       .or(where(created_by: user))
       .or(where(is_default: true))
