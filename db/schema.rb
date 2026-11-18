@@ -760,7 +760,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["code_hash"], name: "index_instagram_amh_short_links_on_code_hash", unique: true
     t.index ["event_hash"], name: "index_instagram_amh_short_links_on_event_hash", unique: true
     t.index ["expires_at"], name: "index_instagram_amh_short_links_on_expires_at"
-    t.check_constraint "material::text = ANY (ARRAY['amh'::character varying, 'amh-consultorio'::character varying]::text[])", name: "amh_short_link_material"
+    t.check_constraint "material::text = ANY (ARRAY['amh'::character varying::text, 'amh-consultorio'::character varying::text])", name: "amh_short_link_material"
   end
 
   create_table "instagram_amh_visual_proofs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1151,7 +1151,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["pipeline_id"], name: "index_pipeline_items_on_pipeline_id"
     t.index ["pipeline_stage_id"], name: "index_pipeline_items_on_pipeline_stage_id"
     t.index ["primary_contact_id"], name: "index_pipeline_items_on_primary_contact_id"
-    t.check_constraint "deal_status::text = ANY (ARRAY['open'::character varying, 'won'::character varying, 'lost'::character varying]::text[])", name: "chk_pipeline_items_deal_status"
+    t.check_constraint "deal_status::text = ANY (ARRAY['open'::character varying::text, 'won'::character varying::text, 'lost'::character varying::text])", name: "chk_pipeline_items_deal_status"
   end
 
   create_table "pipeline_service_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1625,7 +1625,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.datetime "updated_at", null: false
     t.index ["agent_bot_id"], name: "index_vetorial_agent_deployments_on_agent_bot_id", unique: true
     t.index ["slug"], name: "index_vetorial_agent_deployments_on_slug", unique: true
-    t.check_constraint "policy_epoch > 0 AND lock_version >= 0 AND (control_source::text = ANY (ARRAY['crm'::character varying, 'legacy_transition'::character varying]::text[]))", name: "vetorial_deployment_contract"
+    t.check_constraint "policy_epoch > 0 AND lock_version >= 0 AND (control_source::text = ANY (ARRAY['crm'::character varying::text, 'legacy_transition'::character varying::text]))", name: "vetorial_deployment_contract"
   end
 
   create_table "vetorial_agent_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1666,7 +1666,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.datetime "updated_at", null: false
     t.index ["deployment_id", "role"], name: "index_vetorial_agent_profiles_on_deployment_id_and_role", unique: true
     t.index ["deployment_id"], name: "index_vetorial_agent_profiles_on_deployment_id"
-    t.check_constraint "role::text = ANY (ARRAY['atendimento'::character varying, 'analista'::character varying]::text[])", name: "vetorial_profile_role"
+    t.check_constraint "role::text = ANY (ARRAY['atendimento'::character varying::text, 'analista'::character varying::text])", name: "vetorial_profile_role"
   end
 
   create_table "vetorial_agent_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1683,7 +1683,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["deployment_id", "id"], name: "vetorial_revision_owner", unique: true
     t.index ["deployment_id", "number"], name: "index_vetorial_agent_revisions_on_deployment_id_and_number", unique: true
     t.index ["deployment_id"], name: "index_vetorial_agent_revisions_on_deployment_id"
-    t.check_constraint "number > 0 AND (status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])) AND sha256::text ~ '^[0-9a-f]{64}$'::text AND jsonb_typeof(payload) = 'object'::text", name: "vetorial_revision_contract"
+    t.check_constraint "number > 0 AND (status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text])) AND sha256::text ~ '^[0-9a-f]{64}$'::text AND jsonb_typeof(payload) = 'object'::text", name: "vetorial_revision_contract"
   end
 
   create_table "vetorial_agent_runtime_statuses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

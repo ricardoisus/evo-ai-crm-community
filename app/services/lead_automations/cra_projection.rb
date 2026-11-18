@@ -10,6 +10,8 @@ module LeadAutomations
       'utm_term' => 'UTM anúncio', 'utm_posicionamento' => 'UTM posicionamento', 'page_url' => 'Página', 'referrer' => 'Referência'
     }.freeze
     TECHNICAL = %w[acquisition_id source inbox_id instance_id acquired_at source_id ad_id adset_id campaign_id].map { |k| "cra_#{k}" }.freeze
+    # Campos de parâmetro padrão do negócio, preenchidos com os dados do anúncio/UTM (sem prefixo cra_).
+    PARAMETER_FIELDS = %w[utm_source utm_medium utm_campaign utm_content utm_term].freeze
     STRUCTURED = %w[cra_first_touch cra_last_touch cra_consent cra_projection cra_manual_fields].freeze
     module_function
 
@@ -66,10 +68,34 @@ module LeadAutomations
         end
         %w[first_touch last_touch].each { |key| fields["cra_#{key}"] = safe_touch(p[key]) if p[key] }
         fields['cra_consent'] = p['consent'] if p['consent']
-        fields['cra_projection'] = { 'scope_event_id' => event.id, 'revision' => revision }
+        auto = mirror_parameters!(fields, values, manual)
+        fields['cra_projection'] = { 'scope_event_id' => event.id, 'revision' => revision, 'utm_auto' => auto }
         # No callbacks: enrichment has no commercial, messaging, Flow or agent effects.
         deal.update_columns(custom_fields: fields, updated_at: Time.current)
       end
+    end
+
+    # UTM do site tem prioridade; no CTWA usa campanha/conjunto/anúncio resolvidos. Valor humano nunca é sobrescrito.
+    def parameter_values(values)
+      ctwa = values['source'] == 'ctwa'
+      {
+        'utm_source' => values['utm_source'].presence || (ctwa ? 'meta' : nil),
+        'utm_medium' => values['utm_medium'].presence || (ctwa ? 'ctwa' : nil),
+        'utm_campaign' => values['utm_campaign'].presence || values['campaign_name'],
+        'utm_content' => values['utm_content'].presence || values['adset_name'],
+        'utm_term' => values['utm_term'].presence || values['ad_name']
+      }
+    end
+
+    def mirror_parameters!(fields, values, manual)
+      auto = Array(fields.dig('cra_projection', 'utm_auto'))
+      parameter_values(values).each do |field, value|
+        next if value.blank? || manual.include?(field)
+        next if fields[field].present? && !auto.include?(field)
+        fields[field] = value
+        auto |= [field]
+      end
+      auto
     end
 
     def safe_touch(touch)
