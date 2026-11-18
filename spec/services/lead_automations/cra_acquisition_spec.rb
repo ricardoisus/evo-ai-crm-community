@@ -26,7 +26,8 @@ RSpec.describe 'CRA scoped acquisition' do
     { 'version' => 1, 'acquisition_id' => SecureRandom.uuid, 'revision' => 1, 'phone_number' => Contact.find(e.contact_id).phone_number,
       'instance_id' => LeadAutomations::CraAcquisition::INSTANCE_ID, 'provider_message_id' => e.signal['provider_message_id'],
       'source' => 'ctwa', 'ctwa_clid' => 'synthetic-ctwa', 'occurred_at' => e.occurred_at.iso8601(6),
-      'resolution' => { 'ad_id' => '123', 'ad_name' => 'Synthetic ad', 'campaign_id' => '789', 'campaign_name' => 'Synthetic campaign', 'status' => 'resolved' } }.merge(changes.stringify_keys)
+      'resolution' => { 'ad_id' => '123', 'ad_name' => 'Synthetic ad', 'adset_id' => '456', 'campaign_id' => '789', 'campaign_name' => 'Synthetic campaign', 'status' => 'resolved',
+                      'device_os' => 'android', 'click_delay_seconds' => '9', 'creative_type' => 'SHARE' } }.merge(changes.stringify_keys)
   end
   def enrich(p)
     expect(LeadAutomations::ReceiveEnrichment.call(rule, p)).to eq(:accepted)
@@ -54,7 +55,9 @@ RSpec.describe 'CRA scoped acquisition' do
     expect(deal.custom_fields).to include('cra_source' => 'ctwa')
     p = payload(e); enrich(p)
     expect(deal.reload.custom_fields).to include('cra_campaign_name' => 'Synthetic campaign', 'cra_ad_id' => '123')
-    expect(deal.reload.custom_fields).to include('utm_campaign' => 'Synthetic campaign', 'utm_source' => 'meta', 'utm_medium' => 'ctwa')
+    expect(deal.reload.custom_fields).to include('utm_campaign' => '789', 'utm_content' => '456', 'utm_term' => '123', 'utm_source' => 'MetaAds', 'utm_medium' => 'cpc')
+    expect(deal.custom_fields).to include('cra_origin_label' => 'Meta Ads', 'cra_media_label' => 'Click to WhatsApp', 'cra_device_os' => 'android',
+                                          'cra_click_delay_seconds' => '9', 'cra_creative_type' => 'SHARE')
     expect(deal.owner_id).to eq(user.id)
     expect(deal.custom_fields.to_json).not_to include('synthetic-ctwa')
     expect(box.messages.sole.content_attributes_for_egress.to_json).not_to include('synthetic-ctwa')
