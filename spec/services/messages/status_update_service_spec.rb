@@ -3,6 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe Messages::StatusUpdateService do
+  let(:channel_type) { 'Channel::Whatsapp' }
   let(:message) do
     instance_double(
       Message,
@@ -12,6 +13,7 @@ RSpec.describe Messages::StatusUpdateService do
       read?: false,
       failed?: false,
       delivered?: false,
+      inbox: instance_double(Inbox, channel_type: channel_type),
       update!: true
     )
   end
@@ -144,6 +146,24 @@ RSpec.describe Messages::StatusUpdateService do
       expect(result).to be(true), "expected sent → #{target} to be accepted"
       expect(events.size).to eq(1)
       expect(events.first[:data]).to include(previous_status: 'sent', status: target)
+    end
+  end
+
+  it 'rejects a late failure for a message already delivered' do
+    allow(message).to receive_messages(status: 'delivered', delivered?: true)
+    result, events = perform_and_capture(described_class.new(message, 'failed', 'ERROR'))
+
+    expect(result).to be(false)
+    expect(events).to be_empty
+  end
+
+  context 'with an email message' do
+    let(:channel_type) { 'Channel::Email' }
+
+    it 'still accepts a bounce after delivered' do
+      allow(message).to receive_messages(status: 'delivered', delivered?: true)
+
+      expect(described_class.new(message, 'failed', 'bounce').perform).to be(true)
     end
   end
 end

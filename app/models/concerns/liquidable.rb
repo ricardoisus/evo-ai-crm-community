@@ -17,6 +17,9 @@ module Liquidable
   end
 
   def liquid_processable_message?
+    # Texto encaminhado é de terceiros: expandir {{...}} vazaria dados do destinatário.
+    return false if content_attributes['forwarded']
+
     content.present? && (message_type == 'outgoing' || message_type == 'template')
   end
 

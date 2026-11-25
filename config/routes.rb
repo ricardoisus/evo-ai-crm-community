@@ -148,6 +148,8 @@ Rails.application.routes.draw do
         resources :messages, only: [:index, :create, :destroy, :update], controller: 'conversations/messages' do
           member do
             post :retry
+            post :reaction
+            post :forward
           end
         end
         resources :assignments, only: [:create], controller: 'conversations/assignments'

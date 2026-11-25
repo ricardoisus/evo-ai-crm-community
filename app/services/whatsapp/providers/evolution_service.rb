@@ -5,7 +5,9 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     @message = message
     @phone_number = phone_number
 
-    if message.attachments.present?
+    if message.content_attributes.to_h['shared_contacts'].present?
+      send_contact_message(phone_number, message)
+    elsif message.attachments.present?
       send_attachment_message(phone_number, message)
     elsif message.content_type == 'input_select'
       send_interactive_message(phone_number, message)
@@ -35,6 +37,26 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     return true if response.success?
 
     Rails.logger.warn("Evolution API: deleteMessageForEveryone failed (#{response.code}) for source_id=#{message.source_id}")
+    false
+  end
+
+  # Reage (ou remove, com emoji vazio) a uma mensagem já existente no WhatsApp.
+  def send_reaction(message, emoji)
+    key = reaction_key(message)
+    return false unless key
+
+    response = HTTParty.post(
+      "#{api_base_path}/message/sendReaction/#{instance_path}",
+      headers: api_headers,
+      body: { key: key, reaction: emoji }.to_json,
+      timeout: 10
+    )
+    return true if response.success?
+
+    Rails.logger.warn("Evolution API: sendReaction failed (#{response.code}) for source_id=#{message.source_id}")
+    false
+  rescue StandardError => e
+    Rails.logger.warn("Evolution API: sendReaction error #{e.class} for source_id=#{message.source_id}")
     false
   end
 
@@ -348,6 +370,15 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     ERB::Util.url_encode(instance_name.to_s)
   end
 
+  def reaction_key(message)
+    return if api_base_path.blank? || instance_name.blank? || message.source_id.blank?
+
+    remote_jid = remote_jid_for(message)
+    return if remote_jid.blank?
+
+    { remoteJid: remote_jid, fromMe: message.outgoing? || message.template?, id: message.source_id }
+  end
+
   def remote_jid_for(message)
     source_id = message.conversation&.contact_inbox&.source_id.to_s
     return nil if source_id.blank?
@@ -450,11 +481,52 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
       headers: api_headers,
       body: {
         number: phone_number.delete('+'),
-        text: html_to_whatsapp(raw_content)
-      }.to_json
+        text: outbound_text(message, raw_content)
+      }.merge(quoted_params(message)).to_json
     )
 
     process_response(response)
+  end
+
+  # Texto encaminhado de terceiros chega byte a byte (links com &, sinais < >). O escrito no CRM
+  # mantém a formatação convertida, sem as entidades HTML que a conversão introduz.
+  def outbound_text(message, content)
+    attributes = message.respond_to?(:content_attributes) ? message.content_attributes.to_h.with_indifferent_access : {}
+    return html_to_whatsapp(content) unless attributes[:forwarded]
+    return CGI.unescapeHTML(html_to_whatsapp(content)) if attributes[:forwarded_markup]
+
+    content.to_s
+  end
+
+  # Citação de resposta: a Evolution localiza a original pelo id do WhatsApp.
+  # Sem pai nesta conversa ou sem source_id, a mensagem segue sem citação.
+  def quoted_params(message)
+    return {} unless message.respond_to?(:content_attributes)
+
+    parent_id = message.content_attributes.to_h.with_indifferent_access[:in_reply_to]
+    return {} if parent_id.blank?
+
+    source_id = message.conversation.messages.find_by(id: parent_id)&.source_id
+    source_id.present? ? { quoted: { key: { id: source_id } } } : {}
+  end
+
+  def send_contact_message(phone_number, message)
+    contacts = message.content_attributes['shared_contacts'].map { |contact| contact_card(contact.to_h.stringify_keys) }
+
+    response = HTTParty.post(
+      "#{api_base_path}/message/sendContact/#{instance_path}",
+      headers: api_headers,
+      body: { number: phone_number.delete('+'), contact: contacts.uniq }.to_json
+    )
+
+    process_response(response)
+  end
+
+  # wuid é o número no WhatsApp: o waid do vCard, que pode diferir do telefone escrito.
+  def contact_card(contact)
+    phone = Array(contact['phones']).first.to_s
+    wuid = Array(contact['waids']).first.presence || phone.delete('^0-9')
+    { fullName: contact['name'], phoneNumber: phone, wuid: wuid, organization: contact['organization'].presence }.compact
   end
 
   def send_attachment_message(phone_number, message)
@@ -494,9 +566,9 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
         number: phone_number.delete('+'),
         mediatype: map_file_type_to_evolution_media_type(attachment.file_type),
         media: media_url,
-        caption: html_to_whatsapp(message.content.to_s),
+        caption: outbound_text(message, message.content.to_s),
         fileName: attachment.file.filename.to_s
-      }.to_json
+      }.merge(quoted_params(message)).to_json
     )
 
     process_response(response)
@@ -519,18 +591,19 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     attachment = message.attachments.first
 
     # Try direct public URL first (for public S3 buckets)
-    result = send_audio_with_direct_url(phone_number, attachment)
+    quoted = quoted_params(message)
+    result = send_audio_with_direct_url(phone_number, attachment, quoted)
 
     # If direct URL fails, try base64
     if !result && attachment.file.attached?
       Rails.logger.info '[Evolution Audio] Direct URL failed, trying base64'
-      result = send_audio_with_base64(phone_number, attachment)
+      result = send_audio_with_base64(phone_number, attachment, quoted)
     end
 
     result
   end
 
-  def send_audio_with_direct_url(phone_number, attachment)
+  def send_audio_with_direct_url(phone_number, attachment, quoted)
     audio_url = generate_media_url(attachment)
 
     Rails.logger.info "[Evolution Audio] Trying URL: #{audio_url}"
@@ -538,7 +611,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     body_data = {
       number: phone_number.delete('+'),
       audio: audio_url
-    }
+    }.merge(quoted)
 
     Rails.logger.info "[Evolution Audio] Request body: #{body_data.to_json}"
 
@@ -568,7 +641,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     media_url
   end
 
-  def send_audio_with_base64(phone_number, attachment)
+  def send_audio_with_base64(phone_number, attachment, quoted)
     # Convert to base64 - Evolution API expects just the base64 string
     buffer = Base64.strict_encode64(attachment.file.download)
 
@@ -577,7 +650,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     body_data = {
       number: phone_number.delete('+'),
       audio: buffer  # Just the base64 string, no data URI prefix
-    }
+    }.merge(quoted)
 
     response = HTTParty.post(
       "#{api_base_path}/message/sendWhatsAppAudio/#{instance_path}",

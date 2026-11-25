@@ -4,8 +4,8 @@ module Whatsapp::EvolutionHandlers::Helpers
   private
 
   def raw_message_id
-    # Para messages.update, o ID vem diretamente como :messageId ou :keyId
-    @raw_message[:messageId] || @raw_message[:keyId] || @raw_message.dig(:key, :id)
+    # keyId/key.id identify the WhatsApp message; messageId is the Evolution database ID.
+    @raw_message[:keyId].presence || @raw_message.dig(:key, :id).presence || @raw_message[:messageId]
   end
 
   def incoming?
@@ -69,10 +69,7 @@ module Whatsapp::EvolutionHandlers::Helpers
 
       "Location: #{location_msg[:degreesLatitude]}, #{location_msg[:degreesLongitude]}"
     when 'contacts'
-      # Extract contact name for display
-      contact_msg = @raw_message.dig(:message, :contactMessage) ||
-                    @raw_message.dig(:message, :contactsArrayMessage, :contacts)&.first
-      contact_msg&.dig(:displayName) || contact_msg&.dig(:vcard)&.match(/FN:(.+)/i)&.[](1) || 'Contact'
+      shared_contacts.filter_map { |contact| contact['name'].presence }.join(', ').presence || 'Contact'
     end
   end
 

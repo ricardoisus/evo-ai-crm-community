@@ -24,6 +24,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
   def receive_message
     @raw_message = params[:data]
     normalize_lid_alternate!
+    return observe_reaction if reaction?
     return unless processable_observation?
 
     @message = @contact = @contact_inbox = nil
@@ -31,6 +32,17 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
     @conversation = @contact_inbox.conversations.order(:created_at).last ||
                     @contact_inbox.conversations.create!(inbox: inbox, contact: @contact, source: :imported, status: :open)
     persist_observation
+  end
+
+  def reaction?
+    @raw_message.is_a?(Hash) && @raw_message.dig(:message, :reactionMessage).present?
+  end
+
+  # A reação só altera uma mensagem já gravada: não precisa de contato nem de telefone.
+  def observe_reaction
+    return unless %w[user lid].include?(jid_type) && [true, false].include?(@raw_message.dig(:key, :fromMe))
+
+    handle_reaction
   end
 
   def normalize_lid_alternate!
@@ -54,6 +66,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
       'whatsapp_observed' => true, 'evolution_attached' => true,
       'evolution_origin' => incoming? ? 'contact' : 'human_device'
     )
+    handle_contacts if message_type == 'contacts'
     attach_observed_media if media_attachment?
     LeadAutomations::CaptureEvent.persist_message(@message, raw: @raw_message, inbox: inbox, params: params)
   end
@@ -115,7 +128,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
   def update_observed_status(update)
     @raw_message = update
     @message = inbox.messages.find_by(source_id: raw_message_id)
-    return unless @message && (jid_type == 'user' || jid_type == 'unknown')
+    return unless @message && %w[user lid unknown].include?(jid_type)
 
     status = status_mapper
     Messages::StatusUpdateService.new(@message, status).perform if status.present?

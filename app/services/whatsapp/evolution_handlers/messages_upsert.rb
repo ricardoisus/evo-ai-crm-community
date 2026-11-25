@@ -33,6 +33,7 @@ module Whatsapp::EvolutionHandlers::MessagesUpsert
 
   def handle_message
     return handle_revoke_protocol if message_type == 'protocol'
+    return handle_reaction if message_type == 'reaction'
 
     return unless message_processable?
 
@@ -60,6 +61,21 @@ module Whatsapp::EvolutionHandlers::MessagesUpsert
     source_id = revoked_message_source_id(protocol)
     Rails.logger.info "Evolution API: Protocol message (revoked id: #{source_id.inspect}) — marking original revoked"
     mark_message_revoked_by_source_id(source_id)
+  end
+
+  # Reação nunca vira mensagem: só atualiza a alvo. Alvo desconhecido é ignorado.
+  def handle_reaction
+    return unless jid_type.in?(%w[user group lid])
+
+    reaction = @raw_message.dig(:message, :reactionMessage)
+    target_id = reaction.dig(:key, :id)
+    target = inbox.messages.find_by(source_id: target_id) if target_id.present?
+    return unless target
+
+    Messages::ReactionService.new(
+      target, emoji: reaction[:text], from: incoming? ? 'contact' : 'me',
+              occurred_at: evolution_extract_message_timestamp(@raw_message[:messageTimestamp])
+    ).perform
   end
 
   def set_contact

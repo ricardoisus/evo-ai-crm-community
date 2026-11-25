@@ -71,6 +71,7 @@ RSpec.describe Api::V1::Conversations::MessagesController, type: :controller do
         ActionController::Parameters.new(id: 7).permit(:id)
       )
       allow(message_record).to receive(:update!)
+      allow(message_record).to receive(:content_attributes).and_return({})
       allow(SendReplyJob).to receive(:perform_now)
       allow(MessageSerializer).to receive(:serialize).and_return({})
       allow(controller).to receive(:success_response)

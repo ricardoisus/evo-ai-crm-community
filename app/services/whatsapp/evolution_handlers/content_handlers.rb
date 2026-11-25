@@ -11,24 +11,16 @@ module Whatsapp::EvolutionHandlers::ContentHandlers
     }
   end
 
+  # O vCard bruto não é gravado: só nome, telefones e empresa.
   def handle_contacts
-    contact_msg = @raw_message.dig(:message, :contactMessage)
-    contacts_array = @raw_message.dig(:message, :contactsArrayMessage, :contacts)
+    contacts = shared_contacts
+    @message.content_attributes[:shared_contacts] = contacts if contacts.any?
+  end
 
-    contacts = if contact_msg
-                 [contact_msg]
-               elsif contacts_array
-                 contacts_array
-               else
-                 []
-               end
-
-    @message.content_attributes[:contacts] = contacts.map do |contact|
-      {
-        display_name: contact[:displayName],
-        vcard: contact[:vcard]
-      }
-    end
+  def shared_contacts
+    message = @raw_message[:message] || {}
+    contacts = message[:contactMessage] ? [message[:contactMessage]] : message.dig(:contactsArrayMessage, :contacts)
+    Whatsapp::SharedContactsParser.parse(contacts)
   end
 
   def message_content_attributes
@@ -36,16 +28,22 @@ module Whatsapp::EvolutionHandlers::ContentHandlers
       external_created_at: evolution_extract_message_timestamp(@raw_message[:messageTimestamp])
     }
 
-    if message_type == 'reaction'
-      content_attributes[:in_reply_to_external_id] = @raw_message.dig(:message, :reactionMessage, :key, :id)
-      content_attributes[:is_reaction] = true
-    elsif message_type == 'unsupported'
+    if message_type == 'unsupported'
       content_attributes[:is_unsupported] = true
+    elsif quoted_stanza_id.present?
+      content_attributes[:in_reply_to_external_id] = quoted_stanza_id
     end
 
     content_attributes[:sender_name] = participant_push_name if jid_type == 'group' && participant_push_name.present?
     content_attributes[:media_type] = message_type if media_attachment?
 
     content_attributes
+  end
+
+  # A Evolution entrega o contextInfo na raiz de data ou dentro do tipo da mensagem.
+  def quoted_stanza_id
+    message = @raw_message[:message] || {}
+    nodes = [@raw_message, *message.values, message.dig(:documentWithCaptionMessage, :message, :documentMessage)]
+    nodes.filter_map { |node| node.dig(:contextInfo, :stanzaId).presence if node.is_a?(Hash) }.first
   end
 end

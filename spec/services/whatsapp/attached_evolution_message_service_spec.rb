@@ -85,6 +85,109 @@ RSpec.describe 'Attached Evolution ingress' do
     expect(box.messages.sole).to be_read
   end
 
+  ['15550000002@s.whatsapp.net', '999999999@lid'].each do |jid|
+    it "uses the WhatsApp keyId for delivery/read receipts from #{jid.split('@').last}" do
+      box
+      job.perform(channel.id, payload(from_me: true))
+      message = box.messages.sole
+      %w[DELIVERY_ACK READ DELIVERY_ACK].zip(%w[delivered read read]).each do |receipt, expected|
+        update = { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+          keyId: message.source_id, messageId: 'evolution-internal-id', remoteJid: jid, fromMe: true, status: receipt
+        } }
+        expect(ActionCableListener.instance).to receive(:message_updated).with(
+          satisfy { |event| event.data[:message].id == message.id && event.data[:message].status == expected }
+        ) unless receipt == 'DELIVERY_ACK' && expected == 'read'
+        job.perform(channel.id, update)
+        expect(message.reload.status).to eq(expected)
+      end
+      expect(box.messages.count).to eq(1)
+    end
+  end
+
+  it 'ignores group receipts even when the message ID exists' do
+    box
+    job.perform(channel.id, payload(from_me: true))
+    job.perform(channel.id, { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+      keyId: 'synthetic-msg-1', remoteJid: '123456@g.us', status: 'READ'
+    } })
+    expect(box.messages.sole).to be_sent
+  end
+
+  it 'does not create a message when a receipt arrives before its message' do
+    box
+    expect { job.perform(channel.id, { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+      keyId: 'not-yet-stored', messageId: 'internal-id', remoteJid: '999999999@lid', status: 'READ'
+    } }) }.not_to change(Message, :count)
+  end
+
+  def reply_payload(id:, parent_id:, shape:, from_me: false)
+    context = { stanzaId: parent_id }
+    message = { root: { conversation: 'Resposta' },
+                text: { extendedTextMessage: { text: 'Resposta', contextInfo: context } },
+                image: { imageMessage: { caption: 'Resposta', mimetype: 'image/png', contextInfo: context } },
+                document: { documentWithCaptionMessage: { message: { documentMessage: {
+                  caption: 'Resposta', mimetype: 'application/pdf', contextInfo: context
+                } } } } }.fetch(shape)
+    data = payload(id: id, from_me: from_me, message: message)
+    data[:data][:contextInfo] = context if shape == :root
+    data
+  end
+
+  %i[root text image document].each do |shape|
+    it "links a received reply (contextInfo.stanzaId in #{shape}) to the quoted message, once" do
+      box
+      job.perform(channel.id, payload(id: 'parent-1', from_me: true))
+      parent = box.messages.sole
+
+      2.times { job.perform(channel.id, reply_payload(id: 'reply-1', parent_id: 'parent-1', shape: shape)) }
+
+      expect(box.messages.count).to eq(2)
+      attrs = box.messages.find_by!(source_id: 'reply-1').content_attributes
+      expect(attrs['in_reply_to_external_id']).to eq('parent-1')
+      expect(attrs['in_reply_to']).to eq(parent.id)
+    end
+  end
+
+  it 'links a reply typed on the phone (outgoing echo)' do
+    box
+    job.perform(channel.id, payload(id: 'parent-2'))
+    job.perform(channel.id, reply_payload(id: 'reply-2', parent_id: 'parent-2', shape: :text, from_me: true))
+
+    expect(box.messages.find_by!(source_id: 'reply-2').content_attributes['in_reply_to'])
+      .to eq(box.messages.find_by!(source_id: 'parent-2').id)
+  end
+
+  it 'keeps a reply to a message the CRM does not have, without creating an empty bubble' do
+    box
+    job.perform(channel.id, reply_payload(id: 'reply-3', parent_id: 'before-attachment', shape: :root))
+
+    message = box.messages.sole
+    expect(message.content).to eq('Resposta')
+    expect(message.content_attributes['in_reply_to_external_id']).to eq('before-attachment')
+    expect(message.content_attributes['in_reply_to']).to be_nil
+  end
+
+  it 'sends a CRM reply on the attached inbox quoting the parent' do
+    box
+    channel.update_columns(provider_config: channel.provider_config.merge(
+      'api_url' => 'https://evo.example.com', 'admin_token' => 'synthetic-admin'
+    ))
+    job.perform(channel.id, payload(id: 'parent-4'))
+    parent = box.messages.sole
+    user = User.create!(name: 'Atendente sintético', email: 'atendente@example.com')
+    reply = Messages::MessageBuilder.new(user, parent.conversation, ActionController::Parameters.new(
+      content: 'Resposta do CRM', content_attributes: { in_reply_to: parent.id }
+    )).perform
+    sent = stub_request(:post, 'https://evo.example.com/message/sendText/synthetic-vetorial')
+           .with { |request| JSON.parse(request.body)['quoted'] == { 'key' => { 'id' => 'parent-4' } } }
+           .to_return(status: 201, headers: { 'Content-Type' => 'application/json' }, body: { key: { id: 'crm-reply-4' } }.to_json)
+
+    Whatsapp::Providers::EvolutionService.new(whatsapp_channel: channel.reload)
+                                         .send_message('15550000002', reply.reload)
+
+    expect(sent).to have_been_requested.once
+  end
+
   it 'refuses the legacy unauthenticated endpoint for an attached channel' do
     box
     Webhooks::WhatsappEventsJob.new.perform(payload)

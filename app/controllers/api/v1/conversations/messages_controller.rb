@@ -1,10 +1,15 @@
 class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseController
+  MAX_FORWARD_TARGETS = 5
+  TARGET_ID_PATTERN = Regexp.union(ConversationResolver::UUID_PATTERN, /\A\d+\z/)
+
   require_permissions({
     index: 'conversations.read',
     create: 'conversations.update',
     update: 'conversations.update',
     destroy: 'conversations.update',
-    retry: 'conversations.update'
+    retry: 'conversations.update',
+    reaction: 'conversations.update',
+    forward: 'conversations.update'
   })
 
   before_action :ensure_api_inbox, only: :update
@@ -82,7 +87,7 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
     # Reset to :sent directly (StatusUpdateService would reject the no-op
     # `sent → sent` Wisper publish anyway). Channel webhooks emit the
     # subsequent delivered/read events through the canonical funnel.
-    @message.update!(status: :sent, content_attributes: {})
+    @message.update!(status: :sent, content_attributes: retry_attributes)
 
     ::SendReplyJob.perform_now(@message.id)
 
@@ -99,7 +104,110 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
     )
   end
 
+  def reaction
+    @message = message
+    emoji = params[:emoji]
+    refusal = reaction_refusal(emoji)
+    return reaction_failed(refusal) if refusal
+    return reaction_failed('provider_failed') unless reaction_provider.send_reaction(@message, emoji)
+
+    Messages::ReactionService.new(@message, emoji: emoji, from: 'me', user_id: Current.user&.id).perform
+
+    success_response(
+      data: MessageSerializer.serialize(@message.reload, include_attachments: true, include_sender: true),
+      message: 'Reaction updated successfully'
+    )
+  rescue ActiveRecord::RecordNotFound
+    error_response(ApiErrorCodes::RESOURCE_NOT_FOUND, 'Message not found', status: :not_found)
+  end
+
+  def forward
+    ids = forward_target_ids
+    return forward_failed('invalid_targets') unless ids
+
+    targets = ids.map { |id| forward_target(id) }
+    return forward_failed('invalid_target') unless targets.all?
+    return forward_failed('unsupported_channel') unless targets.all? { |target| evolution_conversation?(target) }
+
+    service = Messages::ForwardService.new(message, targets: targets.uniq, sender: Current.user || @resource)
+    refusal = service.refusal
+    return forward_failed(refusal) if refusal
+
+    forward_created(service.perform)
+  rescue ActiveRecord::RecordNotFound
+    error_response(ApiErrorCodes::RESOURCE_NOT_FOUND, 'Message not found', status: :not_found)
+  rescue ActiveRecord::RecordInvalid
+    forward_failed('creation_failed')
+  end
+
   private
+
+  # Só o que muda o envio sobrevive: a citação e, no encaminhamento, o cartão e o texto literal.
+  def retry_attributes
+    attributes = @message.content_attributes.to_h.stringify_keys
+    keys = %w[in_reply_to in_reply_to_external_id]
+    keys += %w[forwarded forwarded_markup shared_contacts] if attributes['forwarded']
+    attributes.slice(*keys)
+  end
+
+  def forward_target_ids
+    ids = params[:target_conversation_ids]
+    return unless ids.is_a?(Array)
+
+    ids = ids.map(&:to_s).uniq
+    ids if ids.size.between?(1, MAX_FORWARD_TARGETS)
+  end
+
+  # Mesma regra da conversa de origem (ver BaseController). Inexistente e sem acesso respondem igual.
+  def forward_target(id)
+    return unless id.match?(TARGET_ID_PATTERN)
+
+    target = resolve_conversation(id)
+    return unless target
+    return target if policy(target.inbox || target).show?
+  end
+
+  def evolution_conversation?(target)
+    channel = target.inbox&.channel
+    channel.is_a?(Channel::Whatsapp) && channel.provider == 'evolution'
+  end
+
+  def forward_created(messages)
+    success_response(
+      data: MessageSerializer.serialize_collection(messages, include_attachments: true, include_sender: true),
+      message: 'Message forwarded successfully',
+      status: :created
+    )
+  end
+
+  def forward_failed(details)
+    error_response(ApiErrorCodes::VALIDATION_ERROR, 'Failed to forward message', details: details, status: :unprocessable_entity)
+  end
+
+  def reaction_refusal(emoji)
+    return 'invalid_emoji' unless single_emoji_or_blank?(emoji)
+    return 'unsupported_channel' unless reaction_provider
+    return 'unsupported_message' if @message.private? || @message.activity? || @message.source_id.blank?
+  end
+
+  # Texto vazio remove a reação; fora isso, exatamente um emoji.
+  def single_emoji_or_blank?(emoji)
+    return false unless emoji.is_a?(String)
+
+    emoji.empty? || (emoji.each_grapheme_cluster.count == 1 && !emoji.ascii_only? && emoji.match?(/\p{Emoji}/))
+  end
+
+  def reaction_provider
+    channel = @conversation.inbox&.channel
+    return unless channel.is_a?(Channel::Whatsapp)
+
+    provider = channel.provider_service
+    provider if provider.respond_to?(:send_reaction)
+  end
+
+  def reaction_failed(details)
+    error_response(ApiErrorCodes::VALIDATION_ERROR, 'Failed to react to message', details: details, status: :unprocessable_entity)
+  end
 
   # EVO-1891: when an agent deletes an OUTGOING message, revoke it on the provider
   # (delete-for-everyone) where supported. Done in a background job so a slow or

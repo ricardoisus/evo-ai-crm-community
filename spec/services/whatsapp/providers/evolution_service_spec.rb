@@ -110,7 +110,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
 
   describe '#send_text_message (HTML to WhatsApp formatting)' do
     it 'converts bold HTML to WhatsApp bold' do
-      message = instance_double('Message', content: '<strong>Hello</strong> World', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: '<strong>Hello</strong> World', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -123,7 +123,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'converts italic HTML to WhatsApp italic' do
-      message = instance_double('Message', content: '<em>italic</em> text', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: '<em>italic</em> text', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -136,7 +136,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'converts code HTML to WhatsApp monospace' do
-      message = instance_double('Message', content: 'use <code>method()</code> here', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: 'use <code>method()</code> here', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -151,7 +151,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     it 'converts mixed formatting correctly' do
       message = instance_double('Message',
                                 content: '<p><strong>Title</strong></p><p>Some <em>italic</em> and <code>code</code></p>',
-                                attachments: double(present?: false), content_type: 'text')
+                                content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -167,7 +167,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'preserves plain text content unchanged' do
-      message = instance_double('Message', content: 'Hello World', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: 'Hello World', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -180,7 +180,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'converts <br> tags to newlines' do
-      message = instance_double('Message', content: 'Line 1<br>Line 2<br/>Line 3', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: 'Line 1<br>Line 2<br/>Line 3', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -193,7 +193,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'converts <p> blocks to double newlines' do
-      message = instance_double('Message', content: '<p>Paragraph 1</p><p>Paragraph 2</p>', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: '<p>Paragraph 1</p><p>Paragraph 2</p>', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -208,7 +208,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     it 'converts list items to dashes' do
       message = instance_double('Message',
                                 content: '<ul><li>Item 1</li><li>Item 2</li></ul>',
-                                attachments: double(present?: false), content_type: 'text')
+                                content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -222,7 +222,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
     end
 
     it 'strips HTML-only content to empty string' do
-      message = instance_double('Message', content: '<p></p>', attachments: double(present?: false), content_type: 'text')
+      message = instance_double('Message', content: '<p></p>', content_attributes: {}, attachments: double(present?: false), content_type: 'text')
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -255,7 +255,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
 
     it 'converts HTML in caption to WhatsApp formatting' do
       message = instance_double('Message', content: '<p>Check this <b>image</b></p>',
-                                           attachments: double(present?: true, first: attachment))
+                                           content_attributes: {}, attachments: double(present?: true, first: attachment))
 
       allow(HTTParty).to receive(:post).and_return(success_response)
 
@@ -278,7 +278,7 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
 
     def send_attachment_of(file_type)
       message = instance_double('Message', content: 'caption',
-                                           attachments: double(present?: true, first: attachment_double(file_type)))
+                                           content_attributes: {}, attachments: double(present?: true, first: attachment_double(file_type)))
       allow(HTTParty).to receive(:post).and_return(success_response)
       service.send_message(phone_number, message)
     end
@@ -317,12 +317,94 @@ RSpec.describe Whatsapp::Providers::EvolutionService do
 
     it 'returns false when the provider rejects the media send (surfaces failure to caller)' do
       message = instance_double('Message', content: 'caption',
-                                           attachments: double(present?: true, first: attachment_double('file')))
+                                           content_attributes: {}, attachments: double(present?: true, first: attachment_double('file')))
       allow(HTTParty).to receive(:post).and_return(
         instance_double(HTTParty::Response, success?: false, code: 400, body: 'invalid mediatype')
       )
 
       expect(service.send_message(phone_number, message)).to be(false)
+    end
+  end
+
+  describe 'quoted reply (in_reply_to)' do
+    let(:parent) { instance_double('Message', source_id: 'WAID-PARENT') }
+    let(:messages) { double('messages') }
+    let(:conversation) { double('conversation', messages: messages) }
+    let(:provider_config) do
+      { 'api_url' => 'https://evo.example.com', 'admin_token' => 'test-token', 'instance_name' => 'CR Advogados' }
+    end
+    let(:requests) { [] }
+    let(:success_response) do
+      instance_double(HTTParty::Response, success?: true, code: 201, body: '{}',
+                                          parsed_response: { 'key' => { 'id' => 'msg-id-123' } })
+    end
+
+    before do
+      allow(messages).to receive(:find_by).with(id: 'parent-id').and_return(parent)
+      allow(HTTParty).to receive(:post) do |url, opts|
+        requests << [url, JSON.parse(opts[:body])]
+        success_response
+      end
+    end
+
+    def reply(file_type: nil, content_attributes: { 'in_reply_to' => 'parent-id' })
+      file = instance_double('AttachmentFile', filename: double(to_s: 'f.bin'), attached?: false)
+      attachment = file_type && instance_double('Attachment', file_type: file_type, file: file,
+                                                              file_url: 'https://s3.example.com/f.bin')
+      instance_double('Message', content: 'Resposta', content_type: 'text', conversation: conversation,
+                                 content_attributes: content_attributes,
+                                 attachments: double(present?: !attachment.nil?, first: attachment))
+    end
+
+    { nil => 'sendText', 'image' => 'sendMedia', 'video' => 'sendMedia', 'file' => 'sendMedia',
+      'audio' => 'sendWhatsAppAudio' }.each do |file_type, endpoint|
+      it "sends quoted.key.id on #{file_type || 'text'} and encodes the instance name" do
+        service.send_message(phone_number, reply(file_type: file_type))
+
+        url, body = requests.sole
+        expect(url).to eq("https://evo.example.com/message/#{endpoint}/CR%20Advogados")
+        expect(body['quoted']).to eq('key' => { 'id' => 'WAID-PARENT' })
+      end
+    end
+
+    it 'keeps the quote on the base64 audio fallback' do
+      file = instance_double('AttachmentFile', attached?: true, download: 'audio-bytes', blob: double)
+      attachment = instance_double('Attachment', file_type: 'audio', file: file)
+      message = instance_double('Message', content: nil, conversation: conversation,
+                                           content_attributes: { 'in_reply_to' => 'parent-id' },
+                                           attachments: double(present?: true, first: attachment))
+      allow(BlobUrlOptions).to receive(:outbound_media_url).and_return('https://crm.example.com/a.ogg')
+      allow(HTTParty).to receive(:post) do |_url, opts|
+        requests << JSON.parse(opts[:body])
+        requests.one? ? instance_double(HTTParty::Response, success?: false, code: 400, body: 'bad url') : success_response
+      end
+
+      service.send_message(phone_number, message)
+
+      expect(requests.size).to eq(2)
+      expect(requests.map { |body| body['quoted'] }).to all(eq('key' => { 'id' => 'WAID-PARENT' }))
+    end
+
+    it 'sends without quoted when the parent has no source_id' do
+      allow(parent).to receive(:source_id).and_return(nil)
+
+      service.send_message(phone_number, reply)
+
+      expect(requests.sole.last).not_to have_key('quoted')
+    end
+
+    it 'sends without quoted when the parent is not in the conversation' do
+      allow(messages).to receive(:find_by).with(id: 'parent-id').and_return(nil)
+
+      service.send_message(phone_number, reply(file_type: 'image'))
+
+      expect(requests.sole.last).not_to have_key('quoted')
+    end
+
+    it 'sends without quoted when the message is not a reply' do
+      service.send_message(phone_number, reply(content_attributes: {}))
+
+      expect(requests.sole.last).not_to have_key('quoted')
     end
   end
 end
