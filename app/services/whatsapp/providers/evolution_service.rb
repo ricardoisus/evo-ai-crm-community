@@ -5,7 +5,9 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     @message = message
     @phone_number = phone_number
 
-    if message.attachments.present?
+    if message.content_attributes.to_h['shared_contacts'].present?
+      send_contact_message(phone_number, message)
+    elsif message.attachments.present?
       send_attachment_message(phone_number, message)
     elsif message.content_type == 'input_select'
       send_interactive_message(phone_number, message)
@@ -496,6 +498,23 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
 
     source_id = message.conversation.messages.find_by(id: parent_id)&.source_id
     source_id.present? ? { quoted: { key: { id: source_id } } } : {}
+  end
+
+  def send_contact_message(phone_number, message)
+    contacts = message.content_attributes['shared_contacts'].map do |contact|
+      contact = contact.to_h.stringify_keys
+      phone = Array(contact['phones']).first.to_s
+      { fullName: contact['name'], phoneNumber: phone, wuid: phone.delete('^0-9'),
+        organization: contact['organization'].presence }.compact
+    end
+
+    response = HTTParty.post(
+      "#{api_base_path}/message/sendContact/#{instance_path}",
+      headers: api_headers,
+      body: { number: phone_number.delete('+'), contact: contacts.uniq }.to_json
+    )
+
+    process_response(response)
   end
 
   def send_attachment_message(phone_number, message)

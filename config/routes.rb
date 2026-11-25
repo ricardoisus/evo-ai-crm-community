@@ -149,6 +149,7 @@ Rails.application.routes.draw do
           member do
             post :retry
             post :reaction
+            post :forward
           end
         end
         resources :assignments, only: [:create], controller: 'conversations/assignments'
