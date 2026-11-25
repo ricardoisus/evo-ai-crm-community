@@ -481,11 +481,21 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
       headers: api_headers,
       body: {
         number: phone_number.delete('+'),
-        text: html_to_whatsapp(raw_content)
+        text: outbound_text(message, raw_content)
       }.merge(quoted_params(message)).to_json
     )
 
     process_response(response)
+  end
+
+  # Texto encaminhado de terceiros chega byte a byte (links com &, sinais < >). O escrito no CRM
+  # mantém a formatação convertida, sem as entidades HTML que a conversão introduz.
+  def outbound_text(message, content)
+    attributes = message.respond_to?(:content_attributes) ? message.content_attributes.to_h.with_indifferent_access : {}
+    return html_to_whatsapp(content) unless attributes[:forwarded]
+    return CGI.unescapeHTML(html_to_whatsapp(content)) if attributes[:forwarded_markup]
+
+    content.to_s
   end
 
   # Citação de resposta: a Evolution localiza a original pelo id do WhatsApp.
@@ -501,12 +511,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
   end
 
   def send_contact_message(phone_number, message)
-    contacts = message.content_attributes['shared_contacts'].map do |contact|
-      contact = contact.to_h.stringify_keys
-      phone = Array(contact['phones']).first.to_s
-      { fullName: contact['name'], phoneNumber: phone, wuid: phone.delete('^0-9'),
-        organization: contact['organization'].presence }.compact
-    end
+    contacts = message.content_attributes['shared_contacts'].map { |contact| contact_card(contact.to_h.stringify_keys) }
 
     response = HTTParty.post(
       "#{api_base_path}/message/sendContact/#{instance_path}",
@@ -515,6 +520,13 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     )
 
     process_response(response)
+  end
+
+  # wuid é o número no WhatsApp: o waid do vCard, que pode diferir do telefone escrito.
+  def contact_card(contact)
+    phone = Array(contact['phones']).first.to_s
+    wuid = Array(contact['waids']).first.presence || phone.delete('^0-9')
+    { fullName: contact['name'], phoneNumber: phone, wuid: wuid, organization: contact['organization'].presence }.compact
   end
 
   def send_attachment_message(phone_number, message)
@@ -554,7 +566,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
         number: phone_number.delete('+'),
         mediatype: map_file_type_to_evolution_media_type(attachment.file_type),
         media: media_url,
-        caption: html_to_whatsapp(message.content.to_s),
+        caption: outbound_text(message, message.content.to_s),
         fileName: attachment.file.filename.to_s
       }.merge(quoted_params(message)).to_json
     )

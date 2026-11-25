@@ -106,6 +106,17 @@ RSpec.describe 'POST /api/v1/conversations/:conversation_id/messages/:id/reactio
     expect(reactions.sole.to_h).to include('user_id' => user.id, 'at' => 200)
   end
 
+  it 'is not overwritten by an older phone reaction delivered late' do
+    react('👍')
+    Whatsapp::IncomingMessageEvolutionService.new(inbox: inbox, params: {
+      instance: 'synthetic-vetorial', event: 'messages.upsert', data: {
+        key: { id: 'late-1', fromMe: true, remoteJid: '15550000002@s.whatsapp.net' }, messageTimestamp: Time.current.to_i - 60,
+        message: { reactionMessage: { key: { id: 'target-1' }, text: '😢' } }
+      }
+    }.with_indifferent_access).perform
+    expect(reactions.sole['emoji']).to eq('👍')
+  end
+
   it 'answers 422 without saving when the provider fails' do
     stub_request(:post, 'https://evo.example.com/message/sendReaction/synthetic-vetorial').to_return(status: 400)
     react('👍')

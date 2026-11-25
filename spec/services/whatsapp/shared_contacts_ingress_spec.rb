@@ -41,7 +41,7 @@ RSpec.describe 'Evolution shared contacts ingress' do
       message = box.messages.sole
       expect(message.content).to eq('Ana Sintética')
       expect(message.content_attributes['shared_contacts'].map(&:to_h)).to eq(
-        [{ 'name' => 'Ana Sintética', 'phones' => ['+15550000010'], 'organization' => 'Clínica Exemplo' }]
+        [{ 'name' => 'Ana Sintética', 'phones' => ['+15550000010'], 'waids' => ['15550000010'], 'organization' => 'Clínica Exemplo' }]
       )
       expect(message.content_attributes).not_to have_key('contacts')
       expect(message.attachments).to be_empty

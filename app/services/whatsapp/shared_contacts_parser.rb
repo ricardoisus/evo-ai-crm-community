@@ -2,6 +2,8 @@
 
 # Lê os cartões de contato do WhatsApp (contactMessage / contactsArrayMessage) e devolve
 # [{ 'name' => String, 'phones' => [String], 'organization' => String | nil }].
+# Quando o vCard traz waid (número no WhatsApp, que pode diferir do escrito), entra também
+# 'waids' => [String | nil], alinhado com 'phones'.
 # O vCard vem do aparelho de quem enviou: entrada inesperada é ignorada, nunca levanta erro.
 module Whatsapp::SharedContactsParser
   PROPERTY = /\A(?:[\w-]+\.)?(?<name>FN|TEL|ORG)(?<params>;[^:]*)?:(?<value>.*)\z/i
@@ -16,10 +18,17 @@ module Whatsapp::SharedContactsParser
   def parse_contact(contact)
     properties = properties_from(contact[:vcard] || contact['vcard'])
     name = contact_name(properties['FN'], contact)
-    phones = properties['TEL'].filter_map { |params, value| phone(params, value) }.uniq
+    phones = properties['TEL'].filter_map { |params, value| phone(params, value) }.uniq(&:first)
     return if name.blank? && phones.empty?
 
-    { 'name' => name, 'phones' => phones, 'organization' => organization(properties['ORG']) }
+    card(name, phones, organization(properties['ORG']))
+  end
+
+  def card(name, phones, organization)
+    waids = phones.map(&:last)
+    result = { 'name' => name, 'phones' => phones.map(&:first), 'organization' => organization }
+    result['waids'] = waids if waids.any?
+    result
   end
 
   def contact_name(entries, contact)
@@ -37,13 +46,13 @@ module Whatsapp::SharedContactsParser
     properties
   end
 
-  # O waid é o número no WhatsApp; vale quando o telefone escrito não traz o código do país.
+  # [telefone, waid]. Sem código do país no texto escrito, o waid também vira o telefone.
   def phone(params, value)
     number = unescape(value)
     waid = params[/;waid=(\d+)/i, 1]
-    return "+#{waid}" if waid && !number.start_with?('+')
+    return ["+#{waid}", waid] if waid && !number.start_with?('+')
 
-    number if number.match?(/\d/)
+    [number, waid] if number.match?(/\d/)
   end
 
   def organization(entries)

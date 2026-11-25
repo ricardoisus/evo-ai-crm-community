@@ -19,7 +19,10 @@ class Messages::ForwardService
   def refusal
     return 'unsupported_message' if unforwardable?
 
-    'unsupported_content' unless sendable_content?
+    return 'unsupported_content' unless sendable_content?
+
+    # Quem só vê o telefone mascarado não pode enviar o número completo, nem para si.
+    'masked_contact' if shared_contacts.present? && ContactPiiMasker.should_mask?
   end
 
   # Uma transação: se uma criação falhar, nenhum destino recebe.
@@ -57,11 +60,17 @@ class Messages::ForwardService
   def contacts
     @contacts ||= shared_contacts.map do |contact|
       contact = contact.to_h.stringify_keys
-      phone = Array(contact['phones']).find { |value| sendable_phone?(value) }
-      next unless phone
-
-      { 'name' => contact['name'].presence || phone, 'phones' => [phone], 'organization' => contact['organization'] }
+      index = Array(contact['phones']).index { |value| sendable_phone?(value) }
+      chosen_contact(contact, index) if index
     end
+  end
+
+  def chosen_contact(contact, index)
+    phone = contact['phones'][index]
+    chosen = { 'name' => contact['name'].presence || phone, 'phones' => [phone], 'organization' => contact['organization'] }
+    waid = Array(contact['waids'])[index]
+    chosen['waids'] = [waid] if waid.present?
+    chosen
   end
 
   def sendable_phone?(value)
@@ -72,8 +81,16 @@ class Messages::ForwardService
   def copy_to(target)
     return create_copy(target, content: @message.content) if shared_contacts.present? || @message.attachments.empty?
 
-    @message.attachments.sort_by { |a| [a.created_at, a.id] }.map.with_index do |attachment, index|
-      create_copy(target, content: index.zero? ? @message.content : '', attachment: attachment)
+    copy_attachments(target, @message.attachments.sort_by { |a| [a.created_at, a.id] })
+  end
+
+  # Áudio não leva legenda no WhatsApp: se o primeiro for áudio, o texto segue em mensagem própria.
+  def copy_attachments(target, attachments)
+    text_apart = attachments.first.file_type == 'audio' && @message.content.present?
+    copies = text_apart ? [create_copy(target, content: @message.content)] : []
+    copies + attachments.map.with_index do |attachment, index|
+      content = index.zero? && !text_apart ? @message.content : ''
+      create_copy(target, content: content, attachment: attachment)
     end
   end
 
@@ -88,8 +105,20 @@ class Messages::ForwardService
   # Nada do original além do cartão de contato: citação, reações e ids do WhatsApp ficam lá.
   def copy_attributes
     attributes = { 'forwarded' => true }
+    attributes['forwarded_markup'] = true if composed_in_crm?
     attributes['shared_contacts'] = contacts if shared_contacts.present?
     attributes
+  end
+
+  # Texto escrito no CRM passa pela conversão de formatação, como no envio original; o que veio
+  # do WhatsApp (recebido ou digitado no aparelho, que traz external_created_at) segue cru.
+  def composed_in_crm?
+    return false if @message.incoming?
+
+    attributes = @message.content_attributes.to_h.stringify_keys
+    return attributes['forwarded_markup'].present? if attributes['forwarded']
+
+    !attributes.key?('external_created_at')
   end
 
   # Mesmo blob: nada é baixado ou enviado de novo ao storage.

@@ -45,9 +45,17 @@ class Messages::StatusUpdateService
     # F-2: read and failed are terminal — no transitions out.
     return false if message.read?
     return false if message.failed?
-    # F-2: delivered must not regress to sent.
-    return false if message.delivered? && status.to_s == 'sent'
+    !delivered_regression?
+  end
 
-    true
+  # F-2: delivered must not regress to sent, nor to a late WhatsApp failure.
+  def delivered_regression?
+    message.delivered? && (status.to_s == 'sent' || whatsapp_late_failure?)
+  end
+
+  # ERROR atrasado do WhatsApp não desfaz uma entrega confirmada (e convidaria a reenviar).
+  # Só WhatsApp: no e-mail, "delivered" é o envio aceito e a devolução (bounce) vem depois.
+  def whatsapp_late_failure?
+    status.to_s == 'failed' && message.inbox&.channel_type == 'Channel::Whatsapp'
   end
 end

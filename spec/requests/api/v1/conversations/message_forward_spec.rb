@@ -118,7 +118,7 @@ RSpec.describe 'POST /api/v1/conversations/:conversation_id/messages/:id/forward
     forward([first_target.id], message: sent)
 
     expect(response).to have_http_status(:created)
-    expect(outgoing(first_target).sole.content_attributes).to eq('forwarded' => true)
+    expect(outgoing(first_target).sole.content_attributes).to eq('forwarded' => true, 'forwarded_markup' => true)
   end
 
   it 'sends the text literally, without expanding Liquid with the destination data' do
@@ -126,6 +126,80 @@ RSpec.describe 'POST /api/v1/conversations/:conversation_id/messages/:id/forward
     forward([first_target.id], message: message)
 
     expect(outgoing(first_target).sole.content).to eq('Meu número é {{contact.phone_number}}')
+  end
+
+  def sent_text_body(message, number: '15550000003')
+    forward([first_target.id], message: message)
+    a_request(:post, 'https://evo.example.com/message/sendText/synthetic-vetorial')
+      .with { |request| (@sent = JSON.parse(request.body))['number'] == number }.then { |pattern| expect(pattern).to have_been_made.once }
+    @sent['text']
+  end
+
+  describe 'what actually goes to WhatsApp' do
+    let(:literal) { "https://ex.com/a?x=1&y=2 | se a<b e c>d | <3 | <b>cru</b>\n\n\n\nfim  duplo" }
+
+    it 'sends received text and links byte for byte' do
+      expect(sent_text_body(incoming(content: literal))).to eq(literal)
+    end
+
+    it 'sends text typed on the phone byte for byte' do
+      message = origin.messages.create!(inbox: inbox, message_type: :outgoing, sender: user, content: 'antes',
+                                        source_id: 'phone-1', content_attributes: { 'external_created_at' => 1_788_000_000 })
+      message.update_columns(content: literal)
+      expect(sent_text_body(message)).to eq(literal)
+    end
+
+    it 'keeps formatting CRM-composed text, without escaping links' do
+      message = origin.messages.create!(inbox: inbox, message_type: :outgoing, sender: user, source_id: 'crm-1',
+                                        content: '<p><strong>Oferta</strong> https://ex.com/a?x=1&y=2</p>')
+      expect(sent_text_body(message)).to eq('*Oferta* https://ex.com/a?x=1&y=2')
+      expect(outgoing(first_target).sole.content_attributes).to eq('forwarded' => true, 'forwarded_markup' => true)
+    end
+
+    it 'sends a received caption byte for byte' do
+      message = incoming(content: literal)
+      with_file(message)
+      send_media = stub_send('sendMedia')
+      forward([first_target.id], message: message)
+      expect(send_media.with { |request| JSON.parse(request.body)['caption'] == literal }).to have_been_made.once
+    end
+
+    it 'keeps the literal text on retry' do
+      forward([first_target.id], message: incoming(content: literal))
+      copy = outgoing(first_target).sole
+      copy.update_columns(source_id: nil, status: Message.statuses[:failed])
+      post "/api/v1/conversations/#{first_target.id}/messages/#{copy.id}/retry", as: :json
+      expect(a_request(:post, 'https://evo.example.com/message/sendText/synthetic-vetorial')
+        .with { |request| JSON.parse(request.body)['text'] == literal }).to have_been_made.twice
+    end
+
+    it 'sends the text that came with an audio as its own message' do
+      message = incoming(content: 'Texto junto do áudio')
+      with_file(message, file_type: 'audio', filename: 'a.ogg', content_type: 'audio/ogg')
+      send_audio = stub_send('sendWhatsAppAudio')
+      forward([first_target.id], message: message)
+
+      copies = outgoing(first_target)
+      expect(copies.map { |m| [m.content.to_s, m.attachments.size] }).to contain_exactly(['Texto junto do áudio', 0], ['', 1])
+      expect(send_audio).to have_been_requested.once
+      expect(a_request(:post, 'https://evo.example.com/message/sendText/synthetic-vetorial')
+        .with(body: { number: '15550000003', text: 'Texto junto do áudio' }.to_json)).to have_been_made.once
+    end
+  end
+
+  describe 'retry of a failed reply' do
+    it 'keeps the quote' do
+      reply = origin.messages.create!(inbox: inbox, message_type: :outgoing, sender: user, content: 'Resposta',
+                                      content_attributes: { 'in_reply_to' => source.id, 'external_error' => 'x' })
+      reply.update_columns(status: Message.statuses[:failed])
+
+      post "/api/v1/conversations/#{origin.id}/messages/#{reply.id}/retry", as: :json
+
+      expect(reply.reload.content_attributes).to include('in_reply_to' => source.id)
+      expect(reply.content_attributes).not_to include('external_error')
+      expect(a_request(:post, 'https://evo.example.com/message/sendText/synthetic-vetorial')
+        .with { |request| JSON.parse(request.body).dig('quoted', 'key', 'id') == source.source_id }).to have_been_made.once
+    end
   end
 
   it 'forwards once to a target repeated by uuid and display_id' do
@@ -227,6 +301,46 @@ RSpec.describe 'POST /api/v1/conversations/:conversation_id/messages/:id/forward
       expect(copy.reload.content_attributes).to eq('forwarded' => true, 'shared_contacts' => sent_contacts)
       expect(send_contact).to have_been_requested.twice
       expect(send_text).not_to have_been_requested
+    end
+
+    it 'uses the WhatsApp id of the card (waid), not the digits of the written phone' do
+      vcard = "BEGIN:VCARD\nFN:Ana\nTEL;type=CELL;waid=553190000001:+55 31 99000-0001\nEND:VCARD"
+      parsed = Whatsapp::SharedContactsParser.parse([{ displayName: 'Ana', vcard: vcard }])
+      forward([first_target.id], message: incoming(content: 'Ana', content_attributes: { 'shared_contacts' => parsed }))
+
+      expected = { number: '15550000003', contact: [{ fullName: 'Ana', phoneNumber: '+55 31 99000-0001', wuid: '553190000001' }] }
+      expect(send_contact.with { |request| request.body == expected.to_json }).to have_been_made.once
+      expect(outgoing(first_target).sole.content_attributes['shared_contacts'].sole['waids']).to eq(['553190000001'])
+    end
+
+    context 'when the account masks contact data' do
+      before do
+        allow(RuntimeConfig).to receive(:account).and_return({ 'settings' => { 'mask_contact_pii' => true } })
+      end
+
+      it 'refuses an agent who only sees the masked phone' do
+        allow_any_instance_of(User).to receive(:administrator?).and_return(false)
+        forward([first_target.id], message: card)
+
+        expect_refusal('masked_contact')
+        expect(send_contact).not_to have_been_requested
+        expect(outgoing(first_target)).to be_empty
+      end
+
+      it 'lets an administrator forward the card' do
+        allow_any_instance_of(User).to receive(:administrator?).and_return(true)
+        forward([first_target.id], message: card)
+
+        expect(response).to have_http_status(:created)
+        expect(send_contact.with { |request| request.body == payload.to_json }).to have_been_made.once
+      end
+
+      it 'still lets the agent forward plain text' do
+        allow_any_instance_of(User).to receive(:administrator?).and_return(false)
+        forward([first_target.id])
+
+        expect(response).to have_http_status(:created)
+      end
     end
 
     it 'refuses when any contact has no usable phone' do

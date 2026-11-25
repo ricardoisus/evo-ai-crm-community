@@ -172,8 +172,10 @@ module ContactPiiMasker
       card = contact.to_h.stringify_keys
       # Só dígitos, como o telefone do contato: em texto formatado a máscara pode deixar o número à mostra.
       phones = Array(card['phones']).filter_map { |phone| mask_phone(phone.to_s.gsub(/[^\d+]/, '')) }
-      card.merge('phones' => phones, 'name' => mask_embedded_phone(card['name']),
-                 'organization' => mask_embedded_phone(card['organization']))
+      # waids são o número completo: nunca saem.
+      card.except('waids').merge('phones' => phones,
+                                 'name' => mask_embedded_phone(card['name']),
+                                 'organization' => mask_embedded_phone(card['organization']))
     end
     attrs
   end

@@ -5,6 +5,9 @@
 # não pode acionar agente, automação, webhooks, não lidas ou a ordem da conversa.
 # A tela é avisada só pelo ActionCable (message.updated).
 class Messages::ReactionService
+  # Folga entre o relógio do CRM e o do WhatsApp na marca de um envio pelo CRM.
+  CLOCK_SKEW_SECONDS = 5
+
   # occurred_at: horário do WhatsApp (webhook). Sem ele, é o envio feito pelo CRM.
   def initialize(message, emoji:, from:, user_id: nil, occurred_at: nil)
     @message = message
@@ -22,7 +25,7 @@ class Messages::ReactionService
       attributes = (@message.content_attributes || {}).to_h.stringify_keys
       changed = apply(attributes)
       mark(attributes)
-      persist(attributes) if changed || @occurred_at
+      persist(attributes)
     end
     broadcast if changed
     changed
@@ -61,10 +64,12 @@ class Messages::ReactionService
     true
   end
 
+  # Sem horário do WhatsApp (envio pelo CRM), marca o agora menos a folga de relógio: um webhook
+  # antigo do aparelho, atrasado na fila, não sobrescreve a reação.
   def mark(attributes)
-    return unless @occurred_at
-
-    attributes['reaction_marks'] = attributes['reaction_marks'].to_h.merge(@from => @occurred_at)
+    marks = attributes['reaction_marks'].to_h
+    at = @occurred_at || (Time.current.to_i - CLOCK_SKEW_SECONDS)
+    attributes['reaction_marks'] = marks.merge(@from => [at, marks[@from].to_i].max)
   end
 
   def broadcast

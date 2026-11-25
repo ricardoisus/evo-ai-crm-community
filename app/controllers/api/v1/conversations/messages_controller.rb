@@ -87,9 +87,7 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
     # Reset to :sent directly (StatusUpdateService would reject the no-op
     # `sent → sent` Wisper publish anyway). Channel webhooks emit the
     # subsequent delivered/read events through the canonical funnel.
-    # O cartão de contato encaminhado precisa seguir como cartão, não como texto.
-    forwarded = @message.content_attributes.to_h.slice('forwarded', 'shared_contacts')
-    @message.update!(status: :sent, content_attributes: forwarded['forwarded'] ? forwarded : {})
+    @message.update!(status: :sent, content_attributes: retry_attributes)
 
     ::SendReplyJob.perform_now(@message.id)
 
@@ -143,6 +141,14 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
   end
 
   private
+
+  # Só o que muda o envio sobrevive: a citação e, no encaminhamento, o cartão e o texto literal.
+  def retry_attributes
+    attributes = @message.content_attributes.to_h.stringify_keys
+    keys = %w[in_reply_to in_reply_to_external_id]
+    keys += %w[forwarded forwarded_markup shared_contacts] if attributes['forwarded']
+    attributes.slice(*keys)
+  end
 
   def forward_target_ids
     ids = params[:target_conversation_ids]

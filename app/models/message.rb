@@ -106,8 +106,9 @@ class Message < ApplicationRecord
   # [:external_error : Can specify if the message creation failed due to an error at external API
   # [:is_reaction] : Used to denote if the message is a reaction and differentiate it from a simple reply message
   # [reactions] : [{emoji, from: 'contact'|'me', user_id, at}], one per author; written by Messages::ReactionService
-  # [shared_contacts] : [{name, phones, organization}] from WhatsApp contact cards; masked on egress
+  # [shared_contacts] : [{name, phones, organization, waids?}] from WhatsApp contact cards; masked on egress
   # [forwarded] : true on copies created by Messages::ForwardService
+  # [forwarded_markup] : true on forwarded copies of CRM-composed text (converted on send, not sent raw)
   # [:is_edited, :previous_content] : Used to indicated edited message and previous content (before edit)
 
   store :content_attributes, accessors: [:submitted_email, :items, :submitted_values, :email, :in_reply_to, :deleted,

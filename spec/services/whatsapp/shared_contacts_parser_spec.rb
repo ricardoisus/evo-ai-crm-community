@@ -16,7 +16,8 @@ RSpec.describe Whatsapp::SharedContactsParser do
                  'item1.TEL;waid=15550000010:+1 555-000-0010', 'item1.X-ABLabel:Celular')
 
     expect(parse({ displayName: 'Ana (agenda)', vcard: card })).to eq(
-      [{ 'name' => 'Ana Sintética', 'phones' => ['+1 555-000-0010'], 'organization' => 'Clínica Exemplo' }]
+      [{ 'name' => 'Ana Sintética', 'phones' => ['+1 555-000-0010'], 'waids' => ['15550000010'],
+         'organization' => 'Clínica Exemplo' }]
     )
   end
 
@@ -33,6 +34,13 @@ RSpec.describe Whatsapp::SharedContactsParser do
     card = vcard('FN:Ana', 'TEL;type=CELL;waid=15550000010:(555) 000-0010', 'TEL;waid=15550000011:')
 
     expect(parse({ vcard: card }).sole['phones']).to eq(%w[+15550000010 +15550000011])
+  end
+
+  it 'keeps the waid of each phone aside, aligned with phones' do
+    card = vcard('FN:Ana', 'TEL:+551130000000', 'TEL;waid=553190000001:+55 31 99000-0001')
+
+    expect(parse({ vcard: card }).sole.values_at('phones', 'waids'))
+      .to eq([['+551130000000', '+55 31 99000-0001'], [nil, '553190000001']])
   end
 
   it 'unfolds long lines, unescapes values and accepts CRLF' do

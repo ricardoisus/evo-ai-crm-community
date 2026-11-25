@@ -254,6 +254,13 @@ RSpec.describe ContactPiiMasker do
       expect(described_class.scrub_pii_content_attributes(attrs)).to eq({})
     end
 
+    it 'removes the WhatsApp ids of shared contacts, which are full phone numbers' do
+      attrs = { 'shared_contacts' => [{ 'name' => 'Ana', 'phones' => ['+55 31 99000-0001'], 'waids' => ['553190000001'] }] }
+      scrubbed = described_class.scrub_pii_content_attributes(attrs)
+      expect(scrubbed['shared_contacts'].sole).not_to have_key('waids')
+      expect(scrubbed.to_json).not_to include('553190000001')
+    end
+
     it 'does not mutate the input hash' do
       attrs = { 'submitted_email' => 'x@y.com', 'in_reply_to' => 1 }
       described_class.scrub_pii_content_attributes(attrs)
