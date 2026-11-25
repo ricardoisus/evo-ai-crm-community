@@ -63,7 +63,7 @@ RSpec.describe Evolution::FetchContactAvatarJob do
 
   it 'does nothing when the contact cannot be found' do
     expect(Avatar::AvatarFromUrlJob).not_to receive(:perform_now)
-    described_class.new.perform('00000000-0000-0000-0000-000000000000', '5511999999999', 'channel-uuid')
+    described_class.perform_now('00000000-0000-0000-0000-000000000000', '5511999999999', 'channel-uuid')
   end
 
   describe 'retry behavior' do

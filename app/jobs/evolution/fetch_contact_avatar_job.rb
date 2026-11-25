@@ -11,12 +11,19 @@
 class Evolution::FetchContactAvatarJob < ApplicationJob
   queue_as :low
 
+  ContactNotVisible = Class.new(StandardError)
+
+  # Not committed yet, or removed: try a few times, then give up quietly.
+  retry_on ContactNotVisible, wait: 1.minute, attempts: 3 do |job, _error|
+    Rails.logger.warn "Evolution API: contact #{job.arguments.first} not found, avatar fetch dropped"
+  end
+
   retry_on Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, wait: :polynomially_longer, attempts: 5
   retry_on HTTParty::ResponseError, HTTParty::Error, wait: :polynomially_longer, attempts: 3
 
   def perform(contact_id, phone_number, channel_id)
     contact = Contact.find_by(id: contact_id)
-    return unless contact
+    raise ContactNotVisible unless contact
     return unless Whatsapp::ContactIdentitySync.avatar_due?(contact)
 
     channel = Channel::Whatsapp.find_by(id: channel_id)

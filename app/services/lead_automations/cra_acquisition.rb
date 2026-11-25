@@ -5,7 +5,9 @@ module LeadAutomations
     UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
     VISITOR = /\A[0-9a-f]{48}\z/
     TOUCH_KEYS = %w[utm_source utm_medium utm_campaign utm_content utm_term utm_posicionamento utm_placement page_url referrer captured_at fbclid fbp fbc].freeze
-    RESOLUTION_KEYS = %w[status resolution_status resolved_at ad_id ad_name adset_id adset_name campaign_id campaign_name placement placement_source].freeze
+    RESOLUTION_KEYS = %w[status resolution_status resolved_at ad_id ad_name adset_id adset_name campaign_id campaign_name placement placement_source
+                        campaign_objective adset_destination adset_goal ad_status creative_id creative_name creative_type creative_link platforms
+                        device_os click_app click_delay_seconds media_type].freeze
     ENRICHMENT_KEYS = %w[version acquisition_id revision phone_number instance_id provider_message_id site_event_id page_url source occurred_at visitor_id ctwa_clid source_id source_url headline first_touch last_touch resolution consent].freeze
     module_function
 

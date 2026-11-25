@@ -27,7 +27,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     return false if remote_jid.blank?
 
     response = HTTParty.delete(
-      "#{api_base_path}/chat/deleteMessageForEveryone/#{instance_name}",
+      "#{api_base_path}/chat/deleteMessageForEveryone/#{instance_path}",
       headers: api_headers,
       body: { id: message.source_id, remoteJid: remote_jid, fromMe: message.outgoing? }.to_json,
       timeout: 10
@@ -179,7 +179,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     cached = Redis::Alfred.get(cache_key)
     return cached if cached.present?
 
-    url = "#{api_base_path}/group/findGroupInfos/#{instance_name}?groupJid=#{URI.encode_www_form_component(group_jid)}"
+    url = "#{api_base_path}/group/findGroupInfos/#{instance_path}?groupJid=#{URI.encode_www_form_component(group_jid)}"
     response = HTTParty.get(url, headers: api_headers, timeout: 5)
     return nil unless response.success?
 
@@ -226,7 +226,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     return nil if number.blank? || api_base_path.blank? || instance_name.blank?
 
     response = HTTParty.post(
-      "#{api_base_path}/chat/fetchProfilePictureUrl/#{instance_name}",
+      "#{api_base_path}/chat/fetchProfilePictureUrl/#{instance_path}",
       headers: api_headers,
       body: { number: number }.to_json,
       open_timeout: 5,
@@ -265,7 +265,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     return nil if number.blank? || api_base_path.blank? || instance_name.blank?
 
     response = HTTParty.post(
-      "#{api_base_path}/chat/findContacts/#{instance_name}",
+      "#{api_base_path}/chat/findContacts/#{instance_path}",
       headers: api_headers,
       body: { where: { remoteJid: "#{number}@s.whatsapp.net" } }.to_json,
       open_timeout: 5,
@@ -286,7 +286,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
   private
 
   def try_logout_instance(instance_name)
-    logout_url = "#{api_base_path}/instance/logout/#{instance_name}"
+    logout_url = "#{api_base_path}/instance/logout/#{instance_path}"
     Rails.logger.info "Evolution API: Attempting logout for instance #{instance_name} at #{logout_url}"
 
     response = HTTParty.delete(
@@ -310,7 +310,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
   end
 
   def try_delete_instance(instance_name)
-    delete_url = "#{api_base_path}/instance/delete/#{instance_name}"
+    delete_url = "#{api_base_path}/instance/delete/#{instance_path}"
     Rails.logger.info "Evolution API: Attempting delete for instance #{instance_name} at #{delete_url}"
 
     response = HTTParty.delete(
@@ -341,6 +341,11 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
 
   def instance_name
     whatsapp_channel.provider_config['instance_name']
+  end
+
+  # Instance names may contain spaces ("CR Advogados"); raw they make an invalid URI.
+  def instance_path
+    ERB::Util.url_encode(instance_name.to_s)
   end
 
   def remote_jid_for(message)
@@ -388,7 +393,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     Rails.logger.info "[Evolution] Sending button message to #{clean_number} with #{buttons.length} buttons"
 
     response = HTTParty.post(
-      "#{api_base_path}/message/sendButtons/#{instance_name}",
+      "#{api_base_path}/message/sendButtons/#{instance_path}",
       headers: api_headers,
       body: body.to_json
     )
@@ -419,7 +424,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     Rails.logger.info "[Evolution] Sending list message to #{clean_number} with #{rows.length} rows"
 
     response = HTTParty.post(
-      "#{api_base_path}/message/sendList/#{instance_name}",
+      "#{api_base_path}/message/sendList/#{instance_path}",
       headers: api_headers,
       body: body.to_json
     )
@@ -441,7 +446,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     raw_content = message.respond_to?(:content) ? message.content : message.to_s
 
     response = HTTParty.post(
-      "#{api_base_path}/message/sendText/#{instance_name}",
+      "#{api_base_path}/message/sendText/#{instance_path}",
       headers: api_headers,
       body: {
         number: phone_number.delete('+'),
@@ -483,7 +488,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     Rails.logger.info "[Evolution Media] Sending #{attachment.file_type} with URL: #{media_url}"
 
     response = HTTParty.post(
-      "#{api_base_path}/message/#{endpoint}/#{instance_name}",
+      "#{api_base_path}/message/#{endpoint}/#{instance_path}",
       headers: api_headers,
       body: {
         number: phone_number.delete('+'),
@@ -538,7 +543,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     Rails.logger.info "[Evolution Audio] Request body: #{body_data.to_json}"
 
     response = HTTParty.post(
-      "#{api_base_path}/message/sendWhatsAppAudio/#{instance_name}",
+      "#{api_base_path}/message/sendWhatsAppAudio/#{instance_path}",
       headers: api_headers,
       body: body_data.to_json,
       timeout: 60
@@ -575,7 +580,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     }
 
     response = HTTParty.post(
-      "#{api_base_path}/message/sendWhatsAppAudio/#{instance_name}",
+      "#{api_base_path}/message/sendWhatsAppAudio/#{instance_path}",
       headers: api_headers,
       body: body_data.to_json,
       timeout: 60
