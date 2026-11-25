@@ -11,24 +11,16 @@ module Whatsapp::EvolutionHandlers::ContentHandlers
     }
   end
 
+  # O vCard bruto não é gravado: só nome, telefones e empresa.
   def handle_contacts
-    contact_msg = @raw_message.dig(:message, :contactMessage)
-    contacts_array = @raw_message.dig(:message, :contactsArrayMessage, :contacts)
+    contacts = shared_contacts
+    @message.content_attributes[:shared_contacts] = contacts if contacts.any?
+  end
 
-    contacts = if contact_msg
-                 [contact_msg]
-               elsif contacts_array
-                 contacts_array
-               else
-                 []
-               end
-
-    @message.content_attributes[:contacts] = contacts.map do |contact|
-      {
-        display_name: contact[:displayName],
-        vcard: contact[:vcard]
-      }
-    end
+  def shared_contacts
+    message = @raw_message[:message] || {}
+    contacts = message[:contactMessage] ? [message[:contactMessage]] : message.dig(:contactsArrayMessage, :contacts)
+    Whatsapp::SharedContactsParser.parse(contacts)
   end
 
   def message_content_attributes

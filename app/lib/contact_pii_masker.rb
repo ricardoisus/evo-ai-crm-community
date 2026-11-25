@@ -158,6 +158,29 @@ module ContactPiiMasker
       scrubbed.delete(key)
       scrubbed.delete(key.to_sym)
     end
-    scrubbed
+    scrubbed.delete('contacts') # vCard bruto gravado antes de `shared_contacts`
+    scrubbed.delete(:contacts)
+    mask_shared_contacts(scrubbed)
+  end
+
+  # Cartão de contato recebido no WhatsApp: mesmas regras dos dados de contato.
+  def mask_shared_contacts(attrs)
+    key = ['shared_contacts', :shared_contacts].find { |k| attrs[k].is_a?(Array) }
+    return attrs unless key
+
+    attrs[key] = attrs[key].map do |contact|
+      card = contact.to_h.stringify_keys
+      # Só dígitos, como o telefone do contato: em texto formatado a máscara pode deixar o número à mostra.
+      phones = Array(card['phones']).filter_map { |phone| mask_phone(phone.to_s.gsub(/[^\d+]/, '')) }
+      card.merge('phones' => phones, 'name' => mask_embedded_phone(card['name']),
+                 'organization' => mask_embedded_phone(card['organization']))
+    end
+    attrs
+  end
+
+  def mask_embedded_phone(text)
+    return text if text.blank?
+
+    text.to_s.gsub(PHONE_RUN_REGEX) { |run| run.gsub(/\D/, '').length >= 8 ? mask_phone(run.gsub(/\D/, '')) : run }
   end
 end

@@ -69,10 +69,7 @@ module Whatsapp::EvolutionHandlers::Helpers
 
       "Location: #{location_msg[:degreesLatitude]}, #{location_msg[:degreesLongitude]}"
     when 'contacts'
-      # Extract contact name for display
-      contact_msg = @raw_message.dig(:message, :contactMessage) ||
-                    @raw_message.dig(:message, :contactsArrayMessage, :contacts)&.first
-      contact_msg&.dig(:displayName) || contact_msg&.dig(:vcard)&.match(/FN:(.+)/i)&.[](1) || 'Contact'
+      shared_contacts.filter_map { |contact| contact['name'].presence }.join(', ').presence || 'Contact'
     end
   end
 

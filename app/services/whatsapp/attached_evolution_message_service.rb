@@ -66,6 +66,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
       'whatsapp_observed' => true, 'evolution_attached' => true,
       'evolution_origin' => incoming? ? 'contact' : 'human_device'
     )
+    handle_contacts if message_type == 'contacts'
     attach_observed_media if media_attachment?
     LeadAutomations::CaptureEvent.persist_message(@message, raw: @raw_message, inbox: inbox, params: params)
   end
