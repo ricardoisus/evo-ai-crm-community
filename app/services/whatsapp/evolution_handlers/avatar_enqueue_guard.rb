@@ -8,6 +8,9 @@ module Whatsapp::EvolutionHandlers::AvatarEnqueueGuard
   AVATAR_ENQUEUE_LOCK_KEY = 'EVOLUTION::AVATAR_ENQUEUE_LOCK::%<contact_id>s'.freeze
   AVATAR_ENQUEUE_LOCK_TTL = 1.hour
   BULK_SYNC_JITTER_SECONDS = 600
+  # Callers run inside the transaction that creates the contact; an idle worker
+  # would otherwise pick the job up before the commit and not find it.
+  COMMIT_DELAY_SECONDS = 30
 
   module_function
 
@@ -15,13 +18,9 @@ module Whatsapp::EvolutionHandlers::AvatarEnqueueGuard
     return unless contact_id && channel_id && phone_number.present?
     return unless acquire_avatar_enqueue_lock(contact_id)
 
-    if jitter
-      Evolution::FetchContactAvatarJob
-        .set(wait: rand(0..BULK_SYNC_JITTER_SECONDS).seconds)
-        .perform_later(contact_id, phone_number, channel_id)
-    else
-      Evolution::FetchContactAvatarJob.perform_later(contact_id, phone_number, channel_id)
-    end
+    wait = COMMIT_DELAY_SECONDS
+    wait += rand(0..BULK_SYNC_JITTER_SECONDS) if jitter
+    Evolution::FetchContactAvatarJob.set(wait: wait.seconds).perform_later(contact_id, phone_number, channel_id)
   end
 
   def enqueue_avatar_download(contact, avatar_url)
