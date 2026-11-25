@@ -451,10 +451,22 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
       body: {
         number: phone_number.delete('+'),
         text: html_to_whatsapp(raw_content)
-      }.to_json
+      }.merge(quoted_params(message)).to_json
     )
 
     process_response(response)
+  end
+
+  # Citação de resposta: a Evolution localiza a original pelo id do WhatsApp.
+  # Sem pai nesta conversa ou sem source_id, a mensagem segue sem citação.
+  def quoted_params(message)
+    return {} unless message.respond_to?(:content_attributes)
+
+    parent_id = message.content_attributes.to_h.with_indifferent_access[:in_reply_to]
+    return {} if parent_id.blank?
+
+    source_id = message.conversation.messages.find_by(id: parent_id)&.source_id
+    source_id.present? ? { quoted: { key: { id: source_id } } } : {}
   end
 
   def send_attachment_message(phone_number, message)
@@ -496,7 +508,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
         media: media_url,
         caption: html_to_whatsapp(message.content.to_s),
         fileName: attachment.file.filename.to_s
-      }.to_json
+      }.merge(quoted_params(message)).to_json
     )
 
     process_response(response)
@@ -519,18 +531,19 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     attachment = message.attachments.first
 
     # Try direct public URL first (for public S3 buckets)
-    result = send_audio_with_direct_url(phone_number, attachment)
+    quoted = quoted_params(message)
+    result = send_audio_with_direct_url(phone_number, attachment, quoted)
 
     # If direct URL fails, try base64
     if !result && attachment.file.attached?
       Rails.logger.info '[Evolution Audio] Direct URL failed, trying base64'
-      result = send_audio_with_base64(phone_number, attachment)
+      result = send_audio_with_base64(phone_number, attachment, quoted)
     end
 
     result
   end
 
-  def send_audio_with_direct_url(phone_number, attachment)
+  def send_audio_with_direct_url(phone_number, attachment, quoted)
     audio_url = generate_media_url(attachment)
 
     Rails.logger.info "[Evolution Audio] Trying URL: #{audio_url}"
@@ -538,7 +551,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     body_data = {
       number: phone_number.delete('+'),
       audio: audio_url
-    }
+    }.merge(quoted)
 
     Rails.logger.info "[Evolution Audio] Request body: #{body_data.to_json}"
 
@@ -568,7 +581,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     media_url
   end
 
-  def send_audio_with_base64(phone_number, attachment)
+  def send_audio_with_base64(phone_number, attachment, quoted)
     # Convert to base64 - Evolution API expects just the base64 string
     buffer = Base64.strict_encode64(attachment.file.download)
 
@@ -577,7 +590,7 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     body_data = {
       number: phone_number.delete('+'),
       audio: buffer  # Just the base64 string, no data URI prefix
-    }
+    }.merge(quoted)
 
     response = HTTParty.post(
       "#{api_base_path}/message/sendWhatsAppAudio/#{instance_path}",

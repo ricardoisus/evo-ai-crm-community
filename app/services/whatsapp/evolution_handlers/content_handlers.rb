@@ -41,11 +41,20 @@ module Whatsapp::EvolutionHandlers::ContentHandlers
       content_attributes[:is_reaction] = true
     elsif message_type == 'unsupported'
       content_attributes[:is_unsupported] = true
+    elsif quoted_stanza_id.present?
+      content_attributes[:in_reply_to_external_id] = quoted_stanza_id
     end
 
     content_attributes[:sender_name] = participant_push_name if jid_type == 'group' && participant_push_name.present?
     content_attributes[:media_type] = message_type if media_attachment?
 
     content_attributes
+  end
+
+  # A Evolution entrega o contextInfo na raiz de data ou dentro do tipo da mensagem.
+  def quoted_stanza_id
+    message = @raw_message[:message] || {}
+    nodes = [@raw_message, *message.values, message.dig(:documentWithCaptionMessage, :message, :documentMessage)]
+    nodes.filter_map { |node| node.dig(:contextInfo, :stanzaId).presence if node.is_a?(Hash) }.first
   end
 end
