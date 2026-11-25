@@ -38,6 +38,20 @@ RSpec.describe Whatsapp::EvolutionHandlers::MessagesUpdate do
     allow(host).to receive(:incoming?).and_return(false)
   end
 
+  describe 'WhatsApp source ID precedence (shared with the non-attached handler)' do
+    [
+      [{ keyId: 'wa-key', key: { id: 'nested-key' }, messageId: 'internal' }, 'wa-key'],
+      [{ key: { id: 'nested-key' }, messageId: 'internal' }, 'nested-key'],
+      [{ messageId: 'legacy-key' }, 'legacy-key']
+    ].each do |raw, expected|
+      it "resolves #{expected}" do
+        helper = Class.new { include Whatsapp::EvolutionHandlers::Helpers }.new
+        helper.instance_variable_set(:@raw_message, raw)
+        expect(helper.send(:raw_message_id)).to eq(expected)
+      end
+    end
+  end
+
   describe '#update_status' do
     context 'when mapped status is delivered' do
       it 'delegates to Messages::StatusUpdateService' do

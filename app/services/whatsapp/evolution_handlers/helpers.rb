@@ -4,8 +4,8 @@ module Whatsapp::EvolutionHandlers::Helpers
   private
 
   def raw_message_id
-    # Para messages.update, o ID vem diretamente como :messageId ou :keyId
-    @raw_message[:messageId] || @raw_message[:keyId] || @raw_message.dig(:key, :id)
+    # keyId/key.id identify the WhatsApp message; messageId is the Evolution database ID.
+    @raw_message[:keyId].presence || @raw_message.dig(:key, :id).presence || @raw_message[:messageId]
   end
 
   def incoming?

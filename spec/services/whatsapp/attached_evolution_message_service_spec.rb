@@ -85,6 +85,41 @@ RSpec.describe 'Attached Evolution ingress' do
     expect(box.messages.sole).to be_read
   end
 
+  ['15550000002@s.whatsapp.net', '999999999@lid'].each do |jid|
+    it "uses the WhatsApp keyId for delivery/read receipts from #{jid.split('@').last}" do
+      box
+      job.perform(channel.id, payload(from_me: true))
+      message = box.messages.sole
+      %w[DELIVERY_ACK READ DELIVERY_ACK].zip(%w[delivered read read]).each do |receipt, expected|
+        update = { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+          keyId: message.source_id, messageId: 'evolution-internal-id', remoteJid: jid, fromMe: true, status: receipt
+        } }
+        expect(ActionCableListener.instance).to receive(:message_updated).with(
+          satisfy { |event| event.data[:message].id == message.id && event.data[:message].status == expected }
+        ) unless receipt == 'DELIVERY_ACK' && expected == 'read'
+        job.perform(channel.id, update)
+        expect(message.reload.status).to eq(expected)
+      end
+      expect(box.messages.count).to eq(1)
+    end
+  end
+
+  it 'ignores group receipts even when the message ID exists' do
+    box
+    job.perform(channel.id, payload(from_me: true))
+    job.perform(channel.id, { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+      keyId: 'synthetic-msg-1', remoteJid: '123456@g.us', status: 'READ'
+    } })
+    expect(box.messages.sole).to be_sent
+  end
+
+  it 'does not create a message when a receipt arrives before its message' do
+    box
+    expect { job.perform(channel.id, { instance: 'synthetic-vetorial', event: 'messages.update', data: {
+      keyId: 'not-yet-stored', messageId: 'internal-id', remoteJid: '999999999@lid', status: 'READ'
+    } }) }.not_to change(Message, :count)
+  end
+
   it 'refuses the legacy unauthenticated endpoint for an attached channel' do
     box
     Webhooks::WhatsappEventsJob.new.perform(payload)

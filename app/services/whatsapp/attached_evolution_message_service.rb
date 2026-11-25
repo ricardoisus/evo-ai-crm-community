@@ -115,7 +115,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
   def update_observed_status(update)
     @raw_message = update
     @message = inbox.messages.find_by(source_id: raw_message_id)
-    return unless @message && (jid_type == 'user' || jid_type == 'unknown')
+    return unless @message && %w[user lid unknown].include?(jid_type)
 
     status = status_mapper
     Messages::StatusUpdateService.new(@message, status).perform if status.present?
