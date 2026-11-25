@@ -105,6 +105,7 @@ class Message < ApplicationRecord
   # [:external_created_at] : Can specify if the message was created at a different timestamp externally
   # [:external_error : Can specify if the message creation failed due to an error at external API
   # [:is_reaction] : Used to denote if the message is a reaction and differentiate it from a simple reply message
+  # [reactions] : [{emoji, from: 'contact'|'me', user_id, at}], one per author; written by Messages::ReactionService
   # [:is_edited, :previous_content] : Used to indicated edited message and previous content (before edit)
 
   store :content_attributes, accessors: [:submitted_email, :items, :submitted_values, :email, :in_reply_to, :deleted,
@@ -189,7 +190,7 @@ class Message < ApplicationRecord
       else raise ArgumentError, "unknown audience #{audience.inspect}"
       end
 
-    attributes = content_attributes.except('observed_payload').deep_dup
+    attributes = content_attributes.except('observed_payload', 'reaction_marks').deep_dup
     if attributes['lead_acquisition'].is_a?(Hash) && attributes.dig('lead_acquisition', 'instance_id') == LeadAutomations::CraAcquisition::INSTANCE_ID
       attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id')
     end

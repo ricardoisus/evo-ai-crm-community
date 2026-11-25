@@ -38,6 +38,26 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
     false
   end
 
+  # Reage (ou remove, com emoji vazio) a uma mensagem já existente no WhatsApp.
+  def send_reaction(message, emoji)
+    key = reaction_key(message)
+    return false unless key
+
+    response = HTTParty.post(
+      "#{api_base_path}/message/sendReaction/#{instance_path}",
+      headers: api_headers,
+      body: { key: key, reaction: emoji }.to_json,
+      timeout: 10
+    )
+    return true if response.success?
+
+    Rails.logger.warn("Evolution API: sendReaction failed (#{response.code}) for source_id=#{message.source_id}")
+    false
+  rescue StandardError => e
+    Rails.logger.warn("Evolution API: sendReaction error #{e.class} for source_id=#{message.source_id}")
+    false
+  end
+
   def send_template(phone_number, template_info)
     # Evolution API doesn't support template messages in the same way
     # For now, we'll send a regular text message
@@ -346,6 +366,15 @@ class Whatsapp::Providers::EvolutionService < Whatsapp::Providers::BaseService
   # Instance names may contain spaces ("CR Advogados"); raw they make an invalid URI.
   def instance_path
     ERB::Util.url_encode(instance_name.to_s)
+  end
+
+  def reaction_key(message)
+    return if api_base_path.blank? || instance_name.blank? || message.source_id.blank?
+
+    remote_jid = remote_jid_for(message)
+    return if remote_jid.blank?
+
+    { remoteJid: remote_jid, fromMe: message.outgoing? || message.template?, id: message.source_id }
   end
 
   def remote_jid_for(message)

@@ -4,7 +4,8 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
     create: 'conversations.update',
     update: 'conversations.update',
     destroy: 'conversations.update',
-    retry: 'conversations.update'
+    retry: 'conversations.update',
+    reaction: 'conversations.update'
   })
 
   before_action :ensure_api_inbox, only: :update
@@ -99,7 +100,49 @@ class Api::V1::Conversations::MessagesController < Api::V1::Conversations::BaseC
     )
   end
 
+  def reaction
+    @message = message
+    emoji = params[:emoji]
+    refusal = reaction_refusal(emoji)
+    return reaction_failed(refusal) if refusal
+    return reaction_failed('provider_failed') unless reaction_provider.send_reaction(@message, emoji)
+
+    Messages::ReactionService.new(@message, emoji: emoji, from: 'me', user_id: Current.user&.id).perform
+
+    success_response(
+      data: MessageSerializer.serialize(@message.reload, include_attachments: true, include_sender: true),
+      message: 'Reaction updated successfully'
+    )
+  rescue ActiveRecord::RecordNotFound
+    error_response(ApiErrorCodes::RESOURCE_NOT_FOUND, 'Message not found', status: :not_found)
+  end
+
   private
+
+  def reaction_refusal(emoji)
+    return 'invalid_emoji' unless single_emoji_or_blank?(emoji)
+    return 'unsupported_channel' unless reaction_provider
+    return 'unsupported_message' if @message.private? || @message.activity? || @message.source_id.blank?
+  end
+
+  # Texto vazio remove a reação; fora isso, exatamente um emoji.
+  def single_emoji_or_blank?(emoji)
+    return false unless emoji.is_a?(String)
+
+    emoji.empty? || (emoji.each_grapheme_cluster.count == 1 && !emoji.ascii_only? && emoji.match?(/\p{Emoji}/))
+  end
+
+  def reaction_provider
+    channel = @conversation.inbox&.channel
+    return unless channel.is_a?(Channel::Whatsapp)
+
+    provider = channel.provider_service
+    provider if provider.respond_to?(:send_reaction)
+  end
+
+  def reaction_failed(details)
+    error_response(ApiErrorCodes::VALIDATION_ERROR, 'Failed to react to message', details: details, status: :unprocessable_entity)
+  end
 
   # EVO-1891: when an agent deletes an OUTGOING message, revoke it on the provider
   # (delete-for-everyone) where supported. Done in a background job so a slow or

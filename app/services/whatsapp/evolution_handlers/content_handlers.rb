@@ -36,10 +36,7 @@ module Whatsapp::EvolutionHandlers::ContentHandlers
       external_created_at: evolution_extract_message_timestamp(@raw_message[:messageTimestamp])
     }
 
-    if message_type == 'reaction'
-      content_attributes[:in_reply_to_external_id] = @raw_message.dig(:message, :reactionMessage, :key, :id)
-      content_attributes[:is_reaction] = true
-    elsif message_type == 'unsupported'
+    if message_type == 'unsupported'
       content_attributes[:is_unsupported] = true
     elsif quoted_stanza_id.present?
       content_attributes[:in_reply_to_external_id] = quoted_stanza_id

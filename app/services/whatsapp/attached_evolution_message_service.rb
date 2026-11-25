@@ -24,6 +24,7 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
   def receive_message
     @raw_message = params[:data]
     normalize_lid_alternate!
+    return observe_reaction if reaction?
     return unless processable_observation?
 
     @message = @contact = @contact_inbox = nil
@@ -31,6 +32,17 @@ class Whatsapp::AttachedEvolutionMessageService < Whatsapp::IncomingMessageEvolu
     @conversation = @contact_inbox.conversations.order(:created_at).last ||
                     @contact_inbox.conversations.create!(inbox: inbox, contact: @contact, source: :imported, status: :open)
     persist_observation
+  end
+
+  def reaction?
+    @raw_message.is_a?(Hash) && @raw_message.dig(:message, :reactionMessage).present?
+  end
+
+  # A reação só altera uma mensagem já gravada: não precisa de contato nem de telefone.
+  def observe_reaction
+    return unless %w[user lid].include?(jid_type) && [true, false].include?(@raw_message.dig(:key, :fromMe))
+
+    handle_reaction
   end
 
   def normalize_lid_alternate!
