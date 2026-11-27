@@ -20,6 +20,9 @@ module LeadAutomations
       context = SignalExtractor::TYPES.filter_map { |k| message.dig(k, 'contextInfo') }.first unless context.is_a?(Hash)
       context ||= {}
       ad = context['externalAdReply'].is_a?(Hash) ? context['externalAdReply'] : {}
+      if base[:source] == 'ctwa' && WhatsappTracking::MetaEvent::CLICK_ID.match?(base[:signal]['ctwa_clid'])
+        base[:signal]['tracking_click_verified'] = true
+      end
       [ad['ctwaPayload'], context['ctwaPayload'], context['conversionData']].each do |encoded|
         next unless encoded.is_a?(String) && encoded.bytesize <= 8000
         begin
@@ -39,13 +42,8 @@ module LeadAutomations
       base[:signal]['instance_id'] = CraAcquisition::INSTANCE_ID
       base[:signal]['provider_message_id'] = raw.dig('key', 'id')
       text = message['conversation'] || message.dig('extendedTextMessage', 'text') || message.dig('imageMessage', 'caption')
-      # Same 384-bit UTF-16 codec as site/normalize.mjs. The original text is never retained.
-      encoded = text.to_s.match(/\uFEFF([\u200B\u200C]{384})\uFEFF/)&.[](1)
-      if encoded
-        bits = encoded.chars.map { |c| c == "\u200B" ? '1' : '0' }.join
-        visitor = bits.scan(/.{8}/).map { |b| b.to_i(2).chr }.join
-        base[:signal]['visitor_id'] = visitor if CraAcquisition::VISITOR.match?(visitor)
-      end
+      tracking = WhatsappTracking::JourneyMarker.decode(text)
+      base[:signal]['visitor_id'] = tracking[:visitor_id] if tracking[:tracking] == :journey
       base
     end
   end

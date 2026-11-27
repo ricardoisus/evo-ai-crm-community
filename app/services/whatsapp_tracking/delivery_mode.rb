@@ -14,6 +14,10 @@ module WhatsappTracking
       ENV.fetch('WHATSAPP_TRACKING_DELIVERY_INBOX_IDS', '').split(',').map(&:strip)
     end
 
+    def self.capture_inbox_ids
+      ENV.fetch('WHATSAPP_TRACKING_OBSERVE_INBOX_IDS', '').split(',').map(&:strip)
+    end
+
     def test_code
       ENV['WHATSAPP_TRACKING_META_TEST_CODE'].presence if name == 'test'
     end

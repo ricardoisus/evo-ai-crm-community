@@ -25,6 +25,15 @@ class WhatsappTrackingDelivery < ApplicationRecord
     end
   end
 
+  def self.observe!(inbox_id:, dataset_id:, credential_ref:, event_name:, event_id:, occurred_at:, attribution:)
+    metadata = WhatsappTracking::MetaEvent.new(event_name: event_name, event_id: event_id, occurred_at: occurred_at,
+                                               attribution: attribution).to_h.except(:user_data, :event_source_url)
+    create_or_find_by!(inbox_id: inbox_id, dataset_id: dataset_id, event_id: event_id, mode: 'observation') do |delivery|
+      delivery.assign_attributes(credential_ref: credential_ref, event: metadata, status: 'observed',
+                                 available_at: Time.current, expires_at: occurred_at + 7.days)
+    end
+  end
+
   def claim
     with_lock do
       return unless %w[pending retryable].include?(status) && available_at <= Time.current
