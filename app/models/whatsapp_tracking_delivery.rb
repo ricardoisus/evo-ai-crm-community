@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class WhatsappTrackingDelivery < ApplicationRecord
+  MANUAL_RETRY_STATUSES = %w[configuration_error exhausted].freeze
+
   belongs_to :inbox
   has_many :receipts, class_name: 'WhatsappTrackingReceipt', foreign_key: :delivery_id, inverse_of: :delivery,
                      dependent: :restrict_with_exception
@@ -45,6 +47,14 @@ class WhatsappTrackingDelivery < ApplicationRecord
     end
   end
 
+  def retry_manually
+    with_lock do
+      next false unless MANUAL_RETRY_STATUSES.include?(status) && expires_at > Time.current
+
+      update!(status: 'pending', available_at: Time.current)
+    end
+  end
+
   def expire_claim!
     with_lock do
       return unless status == 'sending' && claimed_at <= 10.minutes.ago
@@ -61,6 +71,6 @@ class WhatsappTrackingDelivery < ApplicationRecord
                      **receipt.slice(:http_status, :error_code, :error_subcode))
 
     next_status = disposition == :retryable && attempt_count >= 5 ? :exhausted : disposition
-    update!(status: next_status, claimed_at: nil, available_at: Time.current + (2**attempt_count).minutes)
+    update!(status: next_status, claimed_at: nil, available_at: Time.current + (2**[attempt_count, 5].min).minutes)
   end
 end

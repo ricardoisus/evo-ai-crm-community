@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_27_121000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_122000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1796,6 +1796,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_121000) do
     t.index ["status", "available_at"], name: "idx_whatsapp_tracking_delivery_ready"
   end
 
+  create_table "whatsapp_tracking_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "name", limit: 120, null: false
+    t.string "dataset_id", limit: 30, null: false
+    t.string "credential_ref", limit: 120, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inbox_id", "dataset_id"], name: "idx_whatsapp_tracking_destination_dataset", unique: true
+    t.index ["inbox_id"], name: "index_whatsapp_tracking_destinations_on_inbox_id"
+  end
+
   create_table "whatsapp_tracking_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "delivery_id", null: false
     t.integer "attempt_number", null: false
@@ -1805,6 +1816,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_121000) do
     t.integer "error_subcode"
     t.datetime "created_at", null: false
     t.index ["delivery_id", "attempt_number"], name: "idx_whatsapp_tracking_receipt_attempt", unique: true
+  end
+
+  create_table "whatsapp_tracking_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "name", limit: 120, null: false
+    t.jsonb "draft", default: {}, null: false
+    t.jsonb "published"
+    t.boolean "active", default: false, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inbox_id"], name: "idx_whatsapp_tracking_active_rules", where: "active"
+    t.index ["inbox_id"], name: "index_whatsapp_tracking_rules_on_inbox_id"
   end
 
   create_table "working_hours", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1896,5 +1920,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_121000) do
   add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_revisions", column: "revision_id"
   add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
   add_foreign_key "whatsapp_tracking_deliveries", "inboxes"
+  add_foreign_key "whatsapp_tracking_destinations", "inboxes"
   add_foreign_key "whatsapp_tracking_receipts", "whatsapp_tracking_deliveries", column: "delivery_id"
+  add_foreign_key "whatsapp_tracking_rules", "inboxes"
 end

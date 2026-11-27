@@ -303,6 +303,20 @@ Rails.application.routes.draw do
         end
       end
 
+      scope 'whatsapp_tracking/:inbox_id', controller: :whatsapp_tracking, as: :whatsapp_tracking do
+        get :rules
+        post :rules, action: :create_rule
+        patch 'rules/:id', action: :update_rule
+        post 'rules/:id/publish', action: :publish
+        post 'rules/:id/pause', action: :pause
+        post 'rules/:id/simulate', action: :simulate
+        get :destinations
+        post :destinations, action: :create_destination
+        patch 'destinations/:id', action: :update_destination
+        get :history
+        post 'history/:id/retry', action: :retry_delivery
+      end
+
       resources :lead_automation_rules do
         member do
           patch :activation
