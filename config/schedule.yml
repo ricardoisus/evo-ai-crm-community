@@ -103,3 +103,8 @@ whatsapp_contact_avatar_sweep_job:
   cron: '15 9 * * *'
   class: 'Whatsapp::ContactAvatarSweepJob'
   queue: scheduled_jobs
+
+whatsapp_tracking_sweep_job:
+  cron: '* * * * *'
+  class: 'WhatsappTracking::SweepJob'
+  queue: scheduled_jobs

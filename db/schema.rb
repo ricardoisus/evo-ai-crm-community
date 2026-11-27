@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1777,6 +1777,34 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["url"], name: "index_webhooks_on_url", unique: true
   end
 
+  create_table "whatsapp_tracking_deliveries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "event_id", limit: 64, null: false
+    t.string "dataset_id", limit: 30, null: false
+    t.string "credential_ref", limit: 120, null: false
+    t.jsonb "event", null: false
+    t.string "status", default: "pending", null: false
+    t.integer "attempt_count", default: 0, null: false
+    t.datetime "available_at", null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["claimed_at"], name: "idx_whatsapp_tracking_delivery_claimed", where: "((status)::text = 'sending'::text)"
+    t.index ["inbox_id", "event_id", "dataset_id"], name: "idx_whatsapp_tracking_delivery_identity", unique: true
+    t.index ["status", "available_at"], name: "idx_whatsapp_tracking_delivery_ready"
+  end
+
+  create_table "whatsapp_tracking_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "delivery_id", null: false
+    t.integer "attempt_number", null: false
+    t.string "status", null: false
+    t.integer "http_status"
+    t.integer "error_code"
+    t.integer "error_subcode"
+    t.datetime "created_at", null: false
+    t.index ["delivery_id", "attempt_number"], name: "idx_whatsapp_tracking_receipt_attempt", unique: true
+  end
+
   create_table "working_hours", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "inbox_id"
     t.integer "day_of_week", null: false
@@ -1865,4 +1893,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
   add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_profiles", column: "profile_id"
   add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_revisions", column: "revision_id"
   add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "whatsapp_tracking_deliveries", "inboxes"
+  add_foreign_key "whatsapp_tracking_receipts", "whatsapp_tracking_deliveries", column: "delivery_id"
 end
