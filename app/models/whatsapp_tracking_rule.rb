@@ -13,6 +13,9 @@ class WhatsappTrackingRule < ApplicationRecord
 
   def publish!
     missing = %w[trigger frequency event_name destination_id mode].reject { |field| draft[field].present? }
+    if draft['trigger'] == 'stage_entered' && draft.dig('filters', 'stage_id').blank?
+      missing << 'stage_id'
+    end
     if missing.any?
       errors.add(:draft, :blank, message: "Preencha #{missing.join(', ')}")
       raise ActiveRecord::RecordInvalid, self
@@ -40,7 +43,9 @@ class WhatsappTrackingRule < ApplicationRecord
     validate_choice('trigger', TRIGGERS)
     validate_choice('frequency', FREQUENCIES)
     validate_choice('mode', MODES)
-    errors.add(:draft, 'Evento Meta inválido') if draft.key?('event_name') && !WhatsappTracking::MetaEvent::EVENT_NAME.match?(draft['event_name'].to_s)
+    if draft.key?('event_name') && (!draft['event_name'].is_a?(String) || !WhatsappTracking::MetaEvent::EVENT_NAME.match?(draft['event_name']))
+      errors.add(:draft, 'Evento Meta inválido')
+    end
     validate_filters if draft.key?('filters')
     validate_text if draft.key?('text')
     validate_destination if draft.key?('destination_id')
