@@ -14,7 +14,7 @@ RSpec.describe WhatsappTracking::MetaClient do
   def respond(code, body)
     response = double('response', code: code.to_s)
     allow(response).to receive(:read_body).and_yield(body)
-    allow(http).to receive(:request).and_yield(response)
+    allow(http).to receive(:request).and_yield(response).and_return(response)
   end
 
   it 'keeps the stable event id and sets the test code without placing the token in the URL' do

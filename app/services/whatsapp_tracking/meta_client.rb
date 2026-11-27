@@ -29,9 +29,9 @@ module WhatsappTracking
 
       Net::HTTP.start(@uri.host, @uri.port, nil, use_ssl: true, open_timeout: 5, read_timeout: 10,
                                                               write_timeout: 5, max_retries: 0) do |http|
-        http.request(request) do |response|
-          parse_response(response)
-        end
+        parsed_receipt = nil
+        http.request(request) { |response| parsed_receipt = parse_response(response) }
+        parsed_receipt
       end
     rescue Net::OpenTimeout, SocketError, Errno::ECONNREFUSED
       { status: :retryable, http_status: nil }
