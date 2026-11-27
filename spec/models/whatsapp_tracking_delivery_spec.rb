@@ -18,6 +18,7 @@ RSpec.describe WhatsappTrackingDelivery do
     first = described_class.enqueue!(**attributes)
     expect(described_class.enqueue!(**attributes).id).to eq(first.id)
     expect(described_class.enqueue!(**attributes.merge(dataset_id: '456')).id).not_to eq(first.id)
+    expect(described_class.enqueue!(**attributes.merge(mode: 'test')).id).not_to eq(first.id)
     expect(first.reload.event.to_json).not_to include('private case details', '5511999999999')
   end
 
@@ -39,6 +40,13 @@ RSpec.describe WhatsappTrackingDelivery do
     end
     expect(delivery.reload.status).to eq('accepted')
     expect(delivery.claim).to be_nil
+  end
+
+  it 'expires an event at seven days and leaves its identity claimed for deduplication' do
+    delivery = described_class.enqueue!(**attributes.merge(occurred_at: 7.days.ago))
+    expect(delivery.claim).to be_nil
+    expect(delivery.reload.status).to eq('expired')
+    expect(described_class.enqueue!(**attributes).id).to eq(delivery.id)
   end
 
   it 'leaves an abandoned claim uncertain and excludes it from retry' do

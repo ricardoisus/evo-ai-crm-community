@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_27_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_121000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1789,8 +1789,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_120000) do
     t.datetime "claimed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "mode", default: "production", null: false
+    t.datetime "expires_at", null: false
     t.index ["claimed_at"], name: "idx_whatsapp_tracking_delivery_claimed", where: "((status)::text = 'sending'::text)"
-    t.index ["inbox_id", "event_id", "dataset_id"], name: "idx_whatsapp_tracking_delivery_identity", unique: true
+    t.index ["inbox_id", "event_id", "dataset_id", "mode"], name: "idx_whatsapp_tracking_delivery_identity", unique: true
     t.index ["status", "available_at"], name: "idx_whatsapp_tracking_delivery_ready"
   end
 

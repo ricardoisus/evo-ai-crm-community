@@ -5,10 +5,12 @@ module WhatsappTracking
     queue_as :scheduled_jobs
 
     def perform
-      return unless ENV["WHATSAPP_TRACKING_DELIVERY_ENABLED"] == "true"
+      inboxes = DeliveryMode.enabled_inbox_ids
+      return if inboxes.empty?
 
       WhatsappTrackingDelivery.abandoned.limit(100).each(&:expire_claim!)
-      ids = WhatsappTrackingDelivery.ready.order(:available_at, :id).limit(100).ids
+      WhatsappTrackingDelivery.expired.update_all(status: 'expired', updated_at: Time.current)
+      ids = WhatsappTrackingDelivery.ready.where(inbox_id: inboxes).order(:available_at, :id).limit(100).ids
       ids.each { |id| DeliverJob.perform_later(id) }
     end
   end

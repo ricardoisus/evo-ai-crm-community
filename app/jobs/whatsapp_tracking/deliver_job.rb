@@ -6,22 +6,26 @@ module WhatsappTracking
     self.log_arguments = false
 
     def perform(delivery_id)
-      return unless ENV["WHATSAPP_TRACKING_DELIVERY_ENABLED"] == "true"
-
       delivery = WhatsappTrackingDelivery.find_by(id: delivery_id)
-      attempt = delivery&.claim
+      return unless delivery
+
+      return unless DeliveryMode.enabled_inbox_ids.include?(delivery.inbox_id)
+
+      mode = DeliveryMode.new(delivery.mode)
+
+      attempt = delivery.claim
       return unless attempt
 
-      delivery.finish!(attempt, deliver(delivery))
+      delivery.finish!(attempt, deliver(delivery, mode))
     end
 
     private
 
-    def deliver(delivery)
+    def deliver(delivery, mode)
       token = ENV[delivery.credential_ref]
-      return { status: :configuration_error } if token.blank?
+      return { status: :configuration_error } if token.blank? || !mode.ready?
 
-      MetaClient.new(dataset_id: delivery.dataset_id, token: token).deliver(delivery.event)
+      MetaClient.new(dataset_id: delivery.dataset_id, token: token).deliver(delivery.event, test_code: mode.test_code)
     end
   end
 end
