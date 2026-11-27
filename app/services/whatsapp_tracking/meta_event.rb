@@ -53,6 +53,8 @@ module WhatsappTracking
 
         data.merge(ctwa_clid: click_id, whatsapp_business_account_id: waba_id)
       else
+        external_id = @attribution[:external_id]
+        data[:external_id] = [external_id] if /\A[a-f0-9]{64}\z/.match?(external_id)
         %i[fbp fbc].each do |key|
           data[key] = @attribution[key] if BROWSER_ID.match?(@attribution[key])
         end
