@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  post '/webhook/cra-whatsapp-site-v1', to: 'public/cra_tracking_site#create'
   post '/public/lead_automation_rules/:id/acquisitions', to: 'public/lead_acquisitions#create'
   match '/public/lead_automation_rules/:id/leads', to: 'public/lead_automation_leads#create', via: [:post, :options]
   post '/internal/instagram-amh/associate', to: 'instagram_amh_link_associations#create'
@@ -301,6 +302,20 @@ Rails.application.routes.draw do
           post :validate_graph
           get :deliveries
         end
+      end
+
+      scope 'whatsapp_tracking/:inbox_id', controller: :whatsapp_tracking, as: :whatsapp_tracking do
+        get :rules
+        post :rules, action: :create_rule
+        patch 'rules/:id', action: :update_rule
+        post 'rules/:id/publish', action: :publish
+        post 'rules/:id/pause', action: :pause
+        post 'rules/:id/simulate', action: :simulate
+        get :destinations
+        post :destinations, action: :create_destination
+        patch 'destinations/:id', action: :update_destination
+        get :history
+        post 'history/:id/retry', action: :retry_delivery
       end
 
       resources :lead_automation_rules do

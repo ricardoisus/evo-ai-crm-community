@@ -25,3 +25,5 @@ Rails.application.config.filter_parameters += [:apikey, :data]
 Rails.application.config.filter_parameters += [:authorization, :contact, :page_url, :ctwa_clid, :ctwaClid, :lead_acquisition]
 
 Rails.application.config.filter_parameters += [:phone_number, :visitor_id, :first_touch, :last_touch, :acquisition, :consent, :contact_consent, :headline, :source_url, :resolution]
+
+Rails.application.config.filter_parameters += [:credential_ref, 'draft.text']

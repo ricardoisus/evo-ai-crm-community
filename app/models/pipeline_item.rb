@@ -90,6 +90,7 @@ class PipelineItem < ApplicationRecord
   after_create :create_entry_movement
   after_create :sync_legacy_associations
   after_create :record_creation_history
+  after_save -> { WhatsappTracking::Capture.stage(self) }, if: :whatsapp_tracking_stage?
   # `_commit` so the Wisper publish + dispatcher dispatch (and the Sidekiq job
   # they enqueue) only fire after the transaction commits — avoids orphan jobs
   # on rollback.
@@ -595,6 +596,10 @@ class PipelineItem < ApplicationRecord
       movement_type: 'system',
       notes: lead? ? 'Lead added to pipeline' : 'Conversation added to pipeline'
     )
+  end
+
+  def whatsapp_tracking_stage?
+    saved_change_to_pipeline_stage_id? && WhatsappTracking::DeliveryMode.capture_inbox_ids.any?
   end
 
   def create_stage_change_movement

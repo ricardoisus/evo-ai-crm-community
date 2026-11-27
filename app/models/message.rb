@@ -140,6 +140,7 @@ class Message < ApplicationRecord
   has_many :notifications, as: :primary_actor, dependent: :destroy_async
 
   after_create -> { VetorialAgent::Capture.message(self) }
+  after_save -> { WhatsappTracking::Capture.message(self) }, if: :whatsapp_tracking_observed_inbox?
 
   after_create_commit :execute_after_create_commit_callbacks, unless: :imported?
   after_create_commit :publish_message_created, unless: :imported?
@@ -149,6 +150,10 @@ class Message < ApplicationRecord
   after_update_commit :publish_message_updated, unless: :whatsapp_observed?
   after_update_commit :broadcast_observed_update, if: :whatsapp_observed?
   after_destroy_commit :publish_message_deleted
+
+  def whatsapp_tracking_observed_inbox?
+    WhatsappTracking::DeliveryMode.capture_inbox_ids.include?(inbox_id)
+  end
 
   def whatsapp_observed?
     content_attributes['whatsapp_observed'] == true
@@ -195,7 +200,7 @@ class Message < ApplicationRecord
 
     attributes = content_attributes.except('observed_payload', 'reaction_marks').deep_dup
     if attributes['lead_acquisition'].is_a?(Hash) && attributes.dig('lead_acquisition', 'instance_id') == LeadAutomations::CraAcquisition::INSTANCE_ID
-      attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id')
+      attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id', 'tracking_click_verified', 'tracking_ad_referral')
     end
     return attributes unless masked
 

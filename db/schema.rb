@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -479,6 +479,83 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["team_id"], name: "index_conversations_on_team_id"
     t.index ["uuid"], name: "index_conversations_on_uuid", unique: true
     t.index ["waiting_since"], name: "index_conversations_on_waiting_since"
+  end
+
+  create_table "cra_tracking_ad_matches", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "ad_id", null: false
+    t.uuid "scope_event_id", null: false
+    t.datetime "projected_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ad_id"], name: "index_cra_tracking_ad_matches_on_ad_id"
+    t.index ["scope_event_id"], name: "index_cra_tracking_ad_matches_on_scope_event_id", unique: true
+  end
+
+  create_table "cra_tracking_ads", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "ad_id", limit: 30, null: false
+    t.string "status", default: "pending", null: false
+    t.jsonb "resolution", default: {}, null: false
+    t.integer "attempt_count", default: 0, null: false
+    t.datetime "next_attempt_at", null: false
+    t.datetime "resolved_at"
+    t.datetime "cooldown_until"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ad_id"], name: "index_cra_tracking_ads_on_ad_id", unique: true
+    t.index ["cooldown_until"], name: "index_cra_tracking_ads_on_cooldown_until", where: "(cooldown_until IS NOT NULL)"
+    t.index ["status", "next_attempt_at"], name: "idx_cra_tracking_ads_due"
+  end
+
+  create_table "cra_tracking_candidates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "message_id", null: false
+    t.string "visitor_key", limit: 64
+    t.datetime "occurred_at", null: false
+    t.datetime "next_check_at", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "ad_id", limit: 30
+    t.index ["message_id"], name: "index_cra_tracking_candidates_on_message_id", unique: true
+    t.index ["next_check_at"], name: "idx_cra_tracking_candidates_ready", where: "((status)::text = 'pending'::text)"
+    t.index ["visitor_key"], name: "idx_cra_tracking_candidates_visitor", where: "((status)::text = 'pending'::text)"
+    t.check_constraint "num_nonnulls(visitor_key, ad_id) = 1", name: "cra_tracking_candidates_one_signal"
+  end
+
+  create_table "cra_tracking_intake_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "event_id", null: false
+    t.string "fingerprint", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.index ["event_id"], name: "index_cra_tracking_intake_receipts_on_event_id", unique: true
+  end
+
+  create_table "cra_tracking_site_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "visitor_id", null: false
+    t.uuid "event_id", null: false
+    t.string "kind", null: false
+    t.string "fingerprint", limit: 64, null: false
+    t.string "path", limit: 500
+    t.boolean "ads", default: false, null: false
+    t.jsonb "last_touch", default: {}, null: false
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id"], name: "index_cra_tracking_site_events_on_event_id", unique: true
+    t.index ["visitor_id", "kind", "occurred_at"], name: "idx_cra_tracking_site_event_attribution"
+  end
+
+  create_table "cra_tracking_site_visitors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "visitor_key", limit: 64, null: false
+    t.boolean "analytics", default: false, null: false
+    t.boolean "ads", default: false, null: false
+    t.string "consent_version", limit: 100
+    t.datetime "consented_at"
+    t.datetime "revoked_at"
+    t.datetime "expires_at", null: false
+    t.jsonb "first_touch", default: {}, null: false
+    t.jsonb "last_touch", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["visitor_key"], name: "index_cra_tracking_site_visitors_on_visitor_key", unique: true
   end
 
   create_table "crm_forms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1777,6 +1854,63 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
     t.index ["url"], name: "index_webhooks_on_url", unique: true
   end
 
+  create_table "whatsapp_tracking_deliveries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "event_id", limit: 64, null: false
+    t.string "dataset_id", limit: 30, null: false
+    t.string "credential_ref", limit: 120, null: false
+    t.jsonb "event", null: false
+    t.string "status", default: "pending", null: false
+    t.integer "attempt_count", default: 0, null: false
+    t.datetime "available_at", null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "mode", default: "production", null: false
+    t.datetime "expires_at", null: false
+    t.uuid "consent_visitor_id"
+    t.index ["claimed_at"], name: "idx_whatsapp_tracking_delivery_claimed", where: "((status)::text = 'sending'::text)"
+    t.index ["consent_visitor_id"], name: "index_whatsapp_tracking_deliveries_on_consent_visitor_id"
+    t.index ["inbox_id", "event_id", "dataset_id", "mode"], name: "idx_whatsapp_tracking_delivery_identity", unique: true
+    t.index ["inbox_id", "event_id", "mode"], name: "idx_whatsapp_tracking_qualified_contact", unique: true, where: "((event ->> 'event_name'::text) = 'QualifiedLead'::text)"
+    t.index ["status", "available_at"], name: "idx_whatsapp_tracking_delivery_ready"
+  end
+
+  create_table "whatsapp_tracking_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "name", limit: 120, null: false
+    t.string "dataset_id", limit: 30, null: false
+    t.string "credential_ref", limit: 120, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inbox_id", "dataset_id"], name: "idx_whatsapp_tracking_destination_dataset", unique: true
+    t.index ["inbox_id"], name: "index_whatsapp_tracking_destinations_on_inbox_id"
+  end
+
+  create_table "whatsapp_tracking_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "delivery_id", null: false
+    t.integer "attempt_number", null: false
+    t.string "status", null: false
+    t.integer "http_status"
+    t.integer "error_code"
+    t.integer "error_subcode"
+    t.datetime "created_at", null: false
+    t.index ["delivery_id", "attempt_number"], name: "idx_whatsapp_tracking_receipt_attempt", unique: true
+  end
+
+  create_table "whatsapp_tracking_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "inbox_id", null: false
+    t.string "name", limit: 120, null: false
+    t.jsonb "draft", default: {}, null: false
+    t.jsonb "published"
+    t.boolean "active", default: false, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inbox_id"], name: "idx_whatsapp_tracking_active_rules", where: "active"
+    t.index ["inbox_id"], name: "index_whatsapp_tracking_rules_on_inbox_id"
+  end
+
   create_table "working_hours", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "inbox_id"
     t.integer "day_of_week", null: false
@@ -1799,6 +1933,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
   add_foreign_key "automation_rule_runs", "automation_rules", on_delete: :cascade
   add_foreign_key "contact_companies", "contacts"
   add_foreign_key "contact_companies", "contacts", column: "company_id"
+  add_foreign_key "cra_tracking_ad_matches", "cra_tracking_ads", column: "ad_id"
+  add_foreign_key "cra_tracking_ad_matches", "lead_acquisition_scope_events", column: "scope_event_id", on_delete: :cascade
+  add_foreign_key "cra_tracking_candidates", "messages", on_delete: :cascade
+  add_foreign_key "cra_tracking_site_events", "cra_tracking_site_visitors", column: "visitor_id", on_delete: :cascade
   add_foreign_key "crm_forms", "pipeline_stages", column: "default_stage_id"
   add_foreign_key "crm_forms", "pipelines", column: "default_pipeline_id"
   add_foreign_key "data_privacy_consents", "users"
@@ -1865,4 +2003,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_17_180000) do
   add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_profiles", column: "profile_id"
   add_foreign_key "vetorial_agent_test_sessions", "vetorial_agent_revisions", column: "revision_id"
   add_foreign_key "vetorial_agent_usages", "vetorial_agent_deployments", column: "deployment_id"
+  add_foreign_key "whatsapp_tracking_deliveries", "cra_tracking_site_visitors", column: "consent_visitor_id"
+  add_foreign_key "whatsapp_tracking_deliveries", "inboxes"
+  add_foreign_key "whatsapp_tracking_destinations", "inboxes"
+  add_foreign_key "whatsapp_tracking_receipts", "whatsapp_tracking_deliveries", column: "delivery_id"
+  add_foreign_key "whatsapp_tracking_rules", "inboxes"
 end
