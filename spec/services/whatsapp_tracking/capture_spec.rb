@@ -59,9 +59,11 @@ RSpec.describe WhatsappTracking::Capture do
     pipeline = Pipeline.create!(name: 'Tracking pipeline', created_by: user)
     initial = pipeline.pipeline_stages.create!(name: 'Entrada', position: 1)
     qualified = pipeline.pipeline_stages.create!(name: 'Pré-Qualificado', position: 2)
+    inbound = Message.create!(inbox: inbox, conversation: conversation, message_type: 'incoming', source_id: 'stage-acquisition',
+                              content: 'Synthetic acquisition', content_attributes: { lead_acquisition: signal })
     LeadAcquisitionScopeEvent.create!(scope_key: 'client:cra', contact_id: contact.id, source: 'ctwa',
-                                      source_key: 'synthetic-stage-acquisition', signal: signal, occurred_at: Time.current,
-                                      received_at: Time.current)
+                                      source_key: 'synthetic-stage-acquisition', message_id: inbound.id, signal: signal,
+                                      occurred_at: Time.current, received_at: Time.current)
     publish('stage_entered', 'QualifiedLead', filters: { stage_id: qualified.id, from_stage_id: initial.id })
     item = PipelineItem.create!(pipeline: pipeline, pipeline_stage: initial, conversation: conversation)
     expect(WhatsappTrackingDelivery.count).to eq(0)
@@ -72,10 +74,58 @@ RSpec.describe WhatsappTracking::Capture do
     expect(WhatsappTrackingDelivery.sole.event).to include('event_name' => 'QualifiedLead')
   end
 
-  def publish(trigger, event_name, filters: {})
+  it 'reconciles a provider message that arrives before the site click and stops processing revoked visitors' do
+    visitor_id = 'a' * 48
+    site_target = WhatsappTrackingDestination.create!(inbox: inbox, name: 'Website', dataset_id: WhatsappTracking::CraConversion::WEBSITE_DATASET,
+                                                      credential_ref: 'WHATSAPP_TRACKING_META_TEST_TOKEN')
+    publish('message_received', 'Lead', filters: { origin: 'website' }, target: site_target)
+    attribution = signal.except('ctwa_clid', 'tracking_click_verified').merge('visitor_id' => visitor_id)
+    message = { inbox: inbox, conversation: conversation, content: 'synthetic message', message_type: 'incoming',
+                content_attributes: { lead_acquisition: attribution } }
+    Message.create!(**message, source_id: 'before-site-click')
+    candidate = CraTrackingCandidate.sole
+    candidate.reconcile!
+    expect(candidate.reload.status).to eq('pending')
+    expect(WhatsappTrackingDelivery.count).to eq(0)
+
+    intake = WhatsappTracking::CraSiteIntake.new(secret: 'synthetic-dedup-secret')
+    intake.call({
+                  'kind' => 'site_batch', 'visitor_id' => visitor_id,
+                  'consent' => { 'at' => (Time.current.to_f * 1000).to_i, 'ads' => true, 'version' => 'synthetic' },
+                  'first_touch' => {}, 'last_touch' => {},
+                  'events' => [{ 'event_id' => SecureRandom.uuid, 'type' => 'whatsapp_click', 'path' => '/',
+                                 'occurred_at' => Time.current.iso8601 }]
+                }, rule: nil)
+    candidate.reconcile!
+    expect(candidate.reload.status).to eq('observed')
+    expect(WhatsappTrackingDelivery.sole.event).to include('event_name' => 'Lead', 'action_source' => 'website')
+    expect(WhatsappTrackingDelivery.sole.event).not_to have_key('user_data')
+
+    intake.call({ 'kind' => 'revoke', 'visitor_id' => visitor_id, 'revoked_at' => Time.current.iso8601 }, rule: nil)
+    Message.create!(**message, source_id: 'after-revocation')
+    expect(CraTrackingCandidate.count).to eq(1)
+  end
+
+  it 'uses the legacy chat route for verified ad referrals after resolving the CRA ad account' do
+    site_target = WhatsappTrackingDestination.create!(inbox: inbox, name: 'Chat dataset', dataset_id: WhatsappTracking::CraConversion::WEBSITE_DATASET,
+                                                      credential_ref: 'WHATSAPP_TRACKING_META_TEST_TOKEN')
+    publish('message_received', 'Lead', filters: { origin: 'chat' }, target: site_target)
+    referral = signal.except('ctwa_clid', 'tracking_click_verified').merge('source_id' => '456', 'tracking_ad_referral' => true)
+    Message.create!(inbox: inbox, conversation: conversation, message_type: 'incoming', source_id: 'ad-only',
+                    content_attributes: { lead_acquisition: referral }, content: 'Synthetic ad referral')
+    candidate = CraTrackingCandidate.sole
+    expect(candidate).to have_attributes(visitor_key: nil, ad_id: '456')
+    expect(WhatsappTrackingDelivery.count).to eq(0)
+    CraTrackingAd.sole.update!(status: 'resolved')
+    candidate.reconcile!
+
+    expect(WhatsappTrackingDelivery.sole.event).to include('event_name' => 'Lead', 'action_source' => 'chat')
+  end
+
+  def publish(trigger, event_name, filters: {}, target: destination)
     rule = WhatsappTrackingRule.create!(inbox: inbox, name: trigger, draft: {
       trigger: trigger, event_name: event_name, mode: 'test', frequency: 'contact',
-      destination_id: destination.id, filters: filters.merge(origin: 'ctwa')
+      destination_id: target.id, filters: { origin: 'ctwa' }.merge(filters)
     })
     rule.publish!
   end

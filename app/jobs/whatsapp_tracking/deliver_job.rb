@@ -11,12 +11,22 @@ module WhatsappTracking
 
       return unless DeliveryMode.enabled_inbox_ids.include?(delivery.inbox_id)
 
+      return if delivery.mode == 'production' && !DeliveryMode.production_inbox_ids.include?(delivery.inbox_id)
+
       mode = DeliveryMode.new(delivery.mode)
 
       attempt = delivery.claim
       return unless attempt
 
-      delivery.finish!(attempt, deliver(delivery, mode))
+      visitor = delivery.consent_visitor
+      if visitor
+        visitor.with_lock do
+          receipt = visitor.tracking_allowed? && visitor.ads? ? deliver(delivery, mode) : { status: :cancelled }
+          delivery.finish!(attempt, receipt)
+        end
+      else
+        delivery.finish!(attempt, deliver(delivery, mode))
+      end
     end
 
     private

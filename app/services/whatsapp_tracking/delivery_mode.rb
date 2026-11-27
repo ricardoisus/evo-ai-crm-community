@@ -15,7 +15,13 @@ module WhatsappTracking
     end
 
     def self.capture_inbox_ids
-      ENV.fetch('WHATSAPP_TRACKING_OBSERVE_INBOX_IDS', '').split(',').map(&:strip)
+      observation = ENV.fetch('WHATSAPP_TRACKING_OBSERVE_INBOX_IDS', '').split(',').map(&:strip)
+      (observation + production_inbox_ids).uniq
+    end
+
+    def self.production_inbox_ids
+      owner = ENV['WHATSAPP_TRACKING_CRA_PRODUCTION_OWNER_INBOX_ID']
+      enabled_inbox_ids & [owner].compact
     end
 
     def test_code

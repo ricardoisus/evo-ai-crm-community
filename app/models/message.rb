@@ -200,7 +200,7 @@ class Message < ApplicationRecord
 
     attributes = content_attributes.except('observed_payload', 'reaction_marks').deep_dup
     if attributes['lead_acquisition'].is_a?(Hash) && attributes.dig('lead_acquisition', 'instance_id') == LeadAutomations::CraAcquisition::INSTANCE_ID
-      attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id', 'tracking_click_verified')
+      attributes['lead_acquisition'] = attributes['lead_acquisition'].except('ctwa_clid', 'visitor_id', 'tracking_click_verified', 'tracking_ad_referral')
     end
     return attributes unless masked
 

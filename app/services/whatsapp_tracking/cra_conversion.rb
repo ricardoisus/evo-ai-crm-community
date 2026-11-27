@@ -40,7 +40,7 @@ module WhatsappTracking
     def source_attribution(input, occurred_at:, family:)
       return { ctwa_clid: input[:ctwa_clid], whatsapp_business_account_id: WABA_ID } if family == 'ctwa'
 
-      result = input.slice(:ads_consent, :page_url).merge(website_host: WEBSITE_HOST)
+      result = input.slice(:ads_consent, :ad_referral_verified, :page_url).merge(website_host: WEBSITE_HOST)
       visitor_id = input[:visitor_id]
       return result unless VISITOR_ID.match?(visitor_id)
 

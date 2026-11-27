@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  post '/webhook/cra-whatsapp-site-v1', to: 'public/cra_tracking_site#create'
   post '/public/lead_automation_rules/:id/acquisitions', to: 'public/lead_acquisitions#create'
   match '/public/lead_automation_rules/:id/leads', to: 'public/lead_automation_leads#create', via: [:post, :options]
   post '/internal/instagram-amh/associate', to: 'instagram_amh_link_associations#create'

@@ -1,4 +1,5 @@
 class LeadAcquisitionScopeEvent < ApplicationRecord
+  after_create { CraTrackingAdMatch.capture(self) }
   after_create_commit { LeadAutomations::ProcessScopedEventJob.perform_later(id) }
   validates :scope_key, inclusion: { in: ['client:cra'] }
   validates :contact_id, :source_key, :occurred_at, :received_at, presence: true

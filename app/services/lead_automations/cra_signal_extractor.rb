@@ -39,6 +39,8 @@ module LeadAutomations
         value = ad[input] || (key == 'headline' && ad['headline'])
         base[:signal][key] = value if value.is_a?(String) && value.bytesize <= limit && !value.match?(/[\u0000-\u001f]/)
       end
+      source_type = ad['sourceType'] || ad['source_type']
+      base[:signal]['tracking_ad_referral'] = true if source_type == 'ad' && /\A[0-9]{1,30}\z/.match?(base[:signal]['source_id'])
       base[:signal]['instance_id'] = CraAcquisition::INSTANCE_ID
       base[:signal]['provider_message_id'] = raw.dig('key', 'id')
       text = message['conversation'] || message.dig('extendedTextMessage', 'text') || message.dig('imageMessage', 'caption')

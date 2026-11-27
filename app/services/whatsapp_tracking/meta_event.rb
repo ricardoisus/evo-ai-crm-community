@@ -36,7 +36,10 @@ module WhatsappTracking
     def validate!
       raise ArgumentError, 'invalid Meta event' unless EVENT_NAME.match?(@event_name) && /\A[a-f0-9]{64}\z/.match?(@event_id)
       raise ArgumentError, 'unsupported action source' unless %w[website chat business_messaging].include?(source)
-      raise ArgumentError, 'missing advertising consent' if source != 'business_messaging' && @attribution[:ads_consent] != true
+      if source != 'business_messaging' && @attribution[:ads_consent] != true &&
+         !(source == 'chat' && @attribution[:ad_referral_verified] == true)
+        raise ArgumentError, 'missing advertising consent'
+      end
       raise ArgumentError, 'Lead requires website or chat' if source == 'business_messaging' && @event_name == 'Lead'
       raise ArgumentError, 'LeadSubmitted requires business messaging' if source != 'business_messaging' && @event_name == 'LeadSubmitted'
     end

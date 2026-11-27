@@ -22,7 +22,8 @@ class Api::V1::WhatsappTrackingController < Api::V1::BaseController
   end
 
   def rules
-    success_response(data: inbox_rules.order(created_at: :desc, id: :desc).map { |rule| rule_data(rule) })
+    items = inbox_rules.order(created_at: :desc, id: :desc).map { |rule| rule_data(rule) }
+    success_response(data: items, meta: { runtime_mode: runtime_mode })
   end
 
   def create_rule
@@ -68,7 +69,7 @@ class Api::V1::WhatsappTrackingController < Api::V1::BaseController
     response.headers['Cache-Control'] = 'no-store'
     scope = WhatsappTrackingDelivery.where(inbox_id: @inbox.id).includes(:receipts).order(created_at: :desc, id: :desc)
     %i[status mode dataset_id].each { |key| scope = scope.where(key => params[key]) if params[key].is_a?(String) }
-    page = [params[:page].to_i, 1].max
+    page = (Integer(params[:page], exception: false) || 1).clamp(1, 100_000)
     per_page = 25
     records = scope.offset((page - 1) * per_page).limit(per_page)
     success_response(data: records.map { |delivery| delivery_data(delivery) },
@@ -85,6 +86,13 @@ class Api::V1::WhatsappTrackingController < Api::V1::BaseController
   end
 
   private
+
+  def runtime_mode
+    return 'production' if WhatsappTracking::DeliveryMode.production_inbox_ids.include?(@inbox.id)
+    return 'observation' if WhatsappTracking::DeliveryMode.capture_inbox_ids.include?(@inbox.id)
+
+    'disabled'
+  end
 
   def require_admin
     head :forbidden unless Current.user&.administrator?
