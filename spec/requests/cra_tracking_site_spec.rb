@@ -37,6 +37,17 @@ RSpec.describe 'CRA native site tracking' do
     expect(response).to have_http_status(:conflict)
   end
 
+  it 'does not apply newer advertising consent to a late batch sent without it' do
+    submit(batch.merge(consent: batch.fetch(:consent).merge(ads: true)))
+    late_event = SecureRandom.uuid
+    submit(batch.merge(consent: batch.fetch(:consent).merge(at: batch.dig(:consent, :at) - 1000),
+                       events: [batch.fetch(:events).first.merge(event_id: late_event)]))
+
+    expect(response).to have_http_status(:accepted)
+    expect(CraTrackingSiteVisitor.sole.ads?).to be(true)
+    expect(CraTrackingSiteEvent.find_by!(event_id: late_event)).to have_attributes(ads: false, last_touch: {})
+  end
+
   it 'commits revocation before acknowledging and blocks already queued or replayed events' do
     submit(batch)
     submit(base.merge(kind: 'revoke', analytics: false, ads: false, revoked_at: Time.current.iso8601),

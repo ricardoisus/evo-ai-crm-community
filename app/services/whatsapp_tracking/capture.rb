@@ -6,7 +6,7 @@ module WhatsappTracking
   class Capture
     def self.message(message, reconciling: false)
       return unless message.inbox.whatsapp? && !message.private? && !message.imported? && !message.failed?
-      return unless message.source_id.present?
+      return unless message.source_id.present? && cra_inbox?(message.inbox)
 
       trigger = if message.incoming? && (message.previously_new_record? || reconciling)
                   'message_received'
@@ -31,6 +31,10 @@ module WhatsappTracking
       )
     end
 
+    def self.cra_inbox?(inbox)
+      inbox&.whatsapp? && inbox.channel.provider_config['attached_instance_id'] == LeadAutomations::CraAcquisition::INSTANCE_ID
+    end
+
     def self.inbound_time(signal, fallback)
       Time.iso8601(signal['occurred_at'].to_s)
     rescue ArgumentError
@@ -46,7 +50,7 @@ module WhatsappTracking
         scoped = LeadAutomationRule.kept.find_by(pipeline_id: item.pipeline_id, acquisition_scope_key: 'client:cra', active: true)
         inbox_id = scoped&.conditions&.dig('ctwa', 'inbox_id')
       end
-      return unless current && inbox_id
+      return unless current && inbox_id && cra_inbox?(Inbox.find_by(id: inbox_id))
 
       new(inbox_id, item.contact).call(
         'trigger' => 'stage_entered', 'occurrence_id' => "#{item.id}:#{item.updated_at.iso8601(6)}:#{current}",
@@ -61,6 +65,7 @@ module WhatsappTracking
 
     def call(event)
       return unless @contact && DeliveryMode.capture_inbox_ids.include?(@inbox_id)
+      return unless event.fetch('occurred_at').between?(7.days.ago, 1.minute.from_now)
 
       WhatsappTrackingDelivery.transaction(requires_new: true) do
         acquisition = cra_acquisition(event)

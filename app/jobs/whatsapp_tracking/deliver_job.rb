@@ -21,15 +21,29 @@ module WhatsappTracking
       visitor = delivery.consent_visitor
       if visitor
         visitor.with_lock do
-          receipt = visitor.tracking_allowed? && visitor.ads? ? deliver(delivery, mode) : { status: :cancelled }
-          delivery.finish!(attempt, receipt)
+          finish_attempt(delivery, attempt, mode, visitor: visitor)
         end
       else
-        delivery.finish!(attempt, deliver(delivery, mode))
+        finish_attempt(delivery, attempt, mode)
       end
     end
 
     private
+
+    def finish_attempt(delivery, attempt, mode, visitor: nil)
+      delivery.with_lock do
+        next unless delivery.status == 'sending' && delivery.attempt_count == attempt
+
+        receipt = if visitor && (!visitor.tracking_allowed? || !visitor.ads?)
+                    { status: :cancelled }
+                  elsif delivery.expires_at <= Time.current
+                    { status: :expired }
+                  else
+                    deliver(delivery, mode)
+                  end
+        delivery.finish!(attempt, receipt)
+      end
+    end
 
     def deliver(delivery, mode)
       token = ENV[delivery.credential_ref]

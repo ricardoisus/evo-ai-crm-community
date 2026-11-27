@@ -73,11 +73,12 @@ module WhatsappTracking
       visitor.save!
       WhatsappTrackingDelivery.cancel_visitor!(visitor.id) unless visitor.ads?
 
+      event_ads = permission.fetch('ads') && visitor.ads?
       ids = payload.fetch('events').map do |event|
         fingerprint = digest(event)
         row = CraTrackingSiteEvent.create_or_find_by!(event_id: event.fetch('event_id')) do |created|
           created.assign_attributes(visitor: visitor, kind: event.fetch('type'), fingerprint: fingerprint,
-                                    path: event.fetch('path'), ads: visitor.ads?, last_touch: visitor.last_touch, occurred_at: Time.iso8601(event.fetch('occurred_at')))
+                                    path: event.fetch('path'), ads: event_ads, last_touch: event_ads ? visitor.last_touch : {}, occurred_at: Time.iso8601(event.fetch('occurred_at')))
         end
         raise Conflict, 'site event conflict' unless row.visitor_id == visitor.id && row.fingerprint == fingerprint
 

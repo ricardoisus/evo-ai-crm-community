@@ -23,8 +23,10 @@ module WhatsappTracking
       record = CraTrackingSiteVisitor.find_or_initialize_by(visitor_key: key)
       revoked = instant(row['revoked_at'])
       consented = instant(row['consented_at'])
-      if record.persisted? && [record.revoked_at, record.consented_at].compact.max.to_i >= [revoked, consented].compact.max.to_i
-        return :visitor_existing
+      if record.persisted?
+        current = [record.revoked_at, record.consented_at].compact.max
+        incoming = [revoked, consented].compact.max
+        return :visitor_existing if current && (!incoming || current > incoming || (current == incoming && (!revoked || record.revoked_at)))
       end
 
       record.assign_attributes(
@@ -42,7 +44,12 @@ module WhatsappTracking
       record.save!
       if revoked || !record.ads?
         WhatsappTrackingDelivery.cancel_visitor!(record.id)
-        record.events.where(ads: true).update_all(ads: false, last_touch: {})
+        if revoked
+          record.events.delete_all
+          CraTrackingCandidate.where(visitor_key: key, status: 'pending').update_all(status: 'revoked', updated_at: Time.current)
+        else
+          record.events.where(ads: true).update_all(ads: false, last_touch: {})
+        end
       end
       :visitor_imported
     end

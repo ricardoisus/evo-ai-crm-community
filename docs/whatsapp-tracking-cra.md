@@ -2,7 +2,7 @@
 
 ## Escopo
 
-A primeira operação usa exclusivamente a caixa WhatsApp anexada à instância CRA `23bd65f3-4d85-47d4-9ec1-09875fdc59ec`. Use a regra ativa com escopo `client:cra` e etapa `Pré-Qualificado`. A configuração inicial publica regras para `Lead` no dataset web, `LeadSubmitted` no dataset de mensagens e `QualifiedLead` no dataset da origem selecionada.
+A primeira operação usa exclusivamente a caixa WhatsApp anexada à instância CRA. Use a regra ativa com escopo `client:cra` e etapa `Pré-Qualificado`. A configuração inicial publica regras para `Lead` no dataset web, `LeadSubmitted` no dataset de mensagens e `QualifiedLead` no dataset da origem selecionada.
 
 A atribuição web usa o marcador existente e o consentimento vigente. O clique CTWA usa o identificador entregue pelo provedor. O módulo usa a mesma chave de deduplicação e o mesmo cálculo do ID da conversão que o legado. A configuração por caixa tem rascunho e publicação independentes. Os recibos mostram resultado e códigos numéricos da Meta.
 
@@ -18,7 +18,7 @@ A atribuição web usa o marcador existente e o consentimento vigente. O clique 
 
 1. Verifique profundidade e consumidores das filas dedicadas `cra.site.ingest` e `cra.messages.upsert`, além do estado de `cra.meta_outbox`, `cra.crm_outbox`, `cra.inbound` e `cra.ad_cache`. Identifique pendências elegíveis e preserve as filas e as tabelas existentes.
 2. Capture os recibos e o estado do site em transações somente leitura imediatamente antes da virada. Rode os importadores em ensaio. Confira que entregas aceitas, entregas incertas e leases abertos aparecem nas contagens. Leases do legado importados ficam incertos. Não repita uma entrega incerta apenas por ausência no painel Meta.
-3. Alterne o destino da borda para o Evo no ponto de transferência de tráfego e desative os consumidores da CRA somente após drenar ou reconciliar as pendências. Trate separadamente a fila do site, o consumidor das mensagens e os cronogramas CAPI e CRM. Preserve a configuração de origem e uma cópia dos estados de controle. Os workflows CRA são `g8Ood93V7jpgpMur`, `bXZoK443jMXrr1lQ`, `VUz8wXmRYvM457UP` e `4m1FZrh6OEqOmX83`. O workflow `uEE0nedxScreaQ4j` é da Vetorial.
+3. Alterne o destino da borda para o Evo no ponto de transferência de tráfego e desative os consumidores da CRA somente após drenar ou reconciliar as pendências. Trate separadamente a fila do site, o consumidor das mensagens e os cronogramas CAPI e CRM. Preserve a configuração de origem e uma cópia dos estados de controle.
 4. Atualize os snapshots após a última rodada do legado, então aplique `whatsapp_tracking:import_cra_website` e `whatsapp_tracking:import_cra_meta_receipts` com `WHATSAPP_TRACKING_COMMIT_WEBSITE=true` e `WHATSAPP_TRACKING_COMMIT_RECEIPTS=true`, respectivamente. Envie os JSON pelo stdin com permissão restrita. Informe a caixa CRA ao importador de recibos. Compare as contagens com o exportador e descarte os arquivos temporários.
 5. Defina `WHATSAPP_TRACKING_CRA_SITE_RULE_ID` com a regra ativa da caixa e altere `WHATSAPP_TRACKING_CRA_SITE_MODE` para `native`. Quando o n8n da CRA terminar de emitir, autorize somente a caixa CRA em `WHATSAPP_TRACKING_DELIVERY_INBOX_IDS` e `WHATSAPP_TRACKING_CRA_PRODUCTION_OWNER_INBOX_ID`, então defina `WHATSAPP_TRACKING_DELIVERY_ENABLED=true`.
 6. Acompanhe a profundidade e os recibos do Evo, a saúde do web e do Sidekiq, o isolamento da Vetorial e o primeiro lead de cada origem. Examine divergências com o mesmo ID antes de reprocessar.

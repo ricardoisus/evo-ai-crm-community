@@ -3,7 +3,10 @@
 require 'rails_helper'
 
 RSpec.describe WhatsappTracking::Capture do
-  let(:channel) { Channel::Whatsapp.create!(provider: 'evolution', phone_number: '+15550000001', provider_config: { instance_name: 'CRA' }) }
+  let(:channel) do
+    Channel::Whatsapp.create!(provider: 'evolution', phone_number: '+15550000001',
+                              provider_config: { instance_name: 'CRA', attached_instance_id: LeadAutomations::CraAcquisition::INSTANCE_ID })
+  end
   let(:inbox) { Inbox.create!(name: 'CRA tracking observation', channel: channel) }
   let(:contact) { Contact.create!(name: 'Synthetic contact', phone_number: '+15550000002') }
   let(:contact_inbox) { ContactInbox.create!(inbox: inbox, contact: contact, source_id: '15550000002') }
@@ -41,6 +44,26 @@ RSpec.describe WhatsappTracking::Capture do
     expect(row.event).to include('event_name' => 'LeadSubmitted')
     expect(row.event.to_json).not_to include('synthetic private case', 'synthetic_click', '15550000002')
     expect(row.claim).to be_nil
+  end
+
+  it 'ignores a WhatsApp inbox attached to another instance even when allowlisted' do
+    channel.update!(provider_config: { instance_name: 'Other', attached_instance_id: SecureRandom.uuid })
+    publish('message_received', 'LeadSubmitted')
+
+    Message.create!(inbox: inbox, conversation: conversation, source_id: 'other-instance', message_type: 'incoming',
+                    content_attributes: { lead_acquisition: signal })
+
+    expect(WhatsappTrackingDelivery.count).to eq(0)
+  end
+
+  it 'does not reserve a contact conversion for an out-of-window provider event' do
+    publish('message_received', 'LeadSubmitted')
+    message = { inbox: inbox, conversation: conversation, message_type: 'incoming', content: 'Synthetic acquisition' }
+    Message.create!(**message, source_id: 'expired', content_attributes: { lead_acquisition: signal.merge('occurred_at' => 8.days.ago.iso8601) })
+    expect(WhatsappTrackingDelivery.count).to eq(0)
+
+    Message.create!(**message, source_id: 'current', content_attributes: { lead_acquisition: signal })
+    expect(WhatsappTrackingDelivery.sole.status).to eq('observed')
   end
 
   it 'evaluates sent messages only when a provider ID is attached' do

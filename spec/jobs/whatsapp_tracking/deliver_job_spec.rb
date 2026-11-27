@@ -35,6 +35,21 @@ RSpec.describe WhatsappTracking::DeliverJob do
     expect(delivery.reload.status).to eq('configuration_error')
   end
 
+  it 'does not send when the sweeper has already marked the claim uncertain' do
+    allow(ENV).to receive(:fetch).with('WHATSAPP_TRACKING_DELIVERY_INBOX_IDS', '').and_return(inbox.id)
+    allow(WhatsappTrackingDelivery).to receive(:find_by).with(id: delivery.id).and_return(delivery)
+    allow(delivery).to receive(:claim).and_wrap_original do |claim|
+      attempt = claim.call
+      delivery.update!(claimed_at: 11.minutes.ago)
+      delivery.expire_claim!
+      attempt
+    end
+
+    expect(WhatsappTracking::MetaClient).not_to receive(:new)
+    described_class.perform_now(delivery.id)
+    expect(delivery.reload.status).to eq('uncertain')
+  end
+
   it 'passes the test code to Meta and persists the classified receipt' do
     allow(ENV).to receive(:fetch).with('WHATSAPP_TRACKING_DELIVERY_INBOX_IDS', '').and_return(inbox.id)
     client = instance_double(WhatsappTracking::MetaClient)

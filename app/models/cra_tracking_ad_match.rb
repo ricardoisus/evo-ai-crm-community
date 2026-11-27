@@ -23,7 +23,7 @@ class CraTrackingAdMatch < ApplicationRecord
 
       event = scope_event
       inbox = Inbox.find_by(id: event.signal['inbox_id'])
-      rule = LeadAutomations::CraAcquisition.rule_for(inbox) if inbox&.whatsapp?
+      rule = LeadAutomations::CraAcquisition.rule_for(inbox) if WhatsappTracking::Capture.cra_inbox?(inbox)
       phone = Contact.find_by(id: event.contact_id)&.phone_number
       next unless rule&.active? && WhatsappTracking::CraSiteContract::PHONE.match?(phone)
 
